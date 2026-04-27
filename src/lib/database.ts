@@ -1,14 +1,16 @@
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
+import type { Database as SqlJsDatabase } from 'sql.js';
 import path from 'path';
 import fs from 'fs';
 
 const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'speccanvas.db');
 
 // 确保数据库目录存在
-const dbDir = path.dirname(dbPath);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
+const ensureDbDirExists = () => {
+  const dbDir = path.dirname(dbPath);
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+};
 
 // 数据库实例
 let db: SqlJsDatabase | null = null;
@@ -17,9 +19,63 @@ let isInitialized = false;
 // 保存数据库到文件
 const saveDatabase = () => {
   if (!db) return;
+  ensureDbDirExists();
   const data = db.export();
   const buffer = Buffer.from(data);
   fs.writeFileSync(dbPath, buffer);
+};
+
+// 动态加载 SQL.js
+const loadSqlJs = async () => {
+  try {
+    // 在 Node.js 环境中，尝试使用 require 来加载 sql.js
+    // 这样 sql.js 可以自动找到 WASM 文件
+    console.log('尝试加载 SQL.js...');
+    
+    // 动态导入 sql.js 模块
+    const sqlJsModule = await import('sql.js');
+    
+    // 尝试使用 sql.js 自带的 Node.js 兼容模式
+    // 不指定 WASM 路径，让 sql.js 自己处理
+    console.log('使用 SQL.js 自动加载 WASM...');
+    const SQL = await sqlJsModule.default();
+    
+    console.log('SQL.js 加载成功');
+    return SQL;
+  } catch (error) {
+    console.error('自动加载 SQL.js 失败，尝试手动加载:', error);
+    
+    // 如果自动加载失败，尝试手动加载 WASM 文件
+    const sqlJsModule = await import('sql.js');
+    
+    // 尝试从多个位置加载 WASM 文件
+    const possibleWasmPaths = [
+      path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
+      '/node_modules/sql.js/dist/sql-wasm.wasm',
+    ];
+    
+    let wasmBinary: Buffer | undefined;
+    
+    for (const wasmPath of possibleWasmPaths) {
+      if (fs.existsSync(wasmPath)) {
+        try {
+          wasmBinary = fs.readFileSync(wasmPath);
+          console.log('从路径加载 WASM 文件:', wasmPath);
+          break;
+        } catch (err) {
+          console.warn('无法从路径加载 WASM 文件:', wasmPath, err);
+        }
+      }
+    }
+    
+    // 初始化 SQL.js
+    if (wasmBinary) {
+      return await sqlJsModule.default({ wasmBinary });
+    } else {
+      // 如果没有找到 WASM 文件，抛出错误
+      throw new Error('无法加载 SQL.js 的 WASM 文件');
+    }
+  }
 };
 
 // 初始化数据库
@@ -29,25 +85,25 @@ const initDatabase = async (): Promise<SqlJsDatabase> => {
   }
 
   try {
-    // 尝试从 node_modules 加载 WASM 文件
-    const wasmPath = path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
+    ensureDbDirExists();
     
-    let SQL;
-    if (fs.existsSync(wasmPath)) {
-      // 如果 WASM 文件存在，使用它
-      const wasmBinary = fs.readFileSync(wasmPath);
-      SQL = await initSqlJs({ wasmBinary });
-    } else {
-      // 否则，让 sql.js 尝试自动加载
-      SQL = await initSqlJs();
-    }
+    console.log('正在初始化数据库...');
+    
+    // 动态加载 SQL.js
+    const SQL = await loadSqlJs();
+    console.log('SQL.js 加载成功');
     
     // 检查是否存在现有的数据库文件
     if (fs.existsSync(dbPath)) {
       // 从文件加载现有数据库
-      const fileBuffer = fs.readFileSync(dbPath);
-      db = new SQL.Database(fileBuffer);
-      console.log('从现有文件加载数据库:', dbPath);
+      try {
+        const fileBuffer = fs.readFileSync(dbPath);
+        db = new SQL.Database(fileBuffer);
+        console.log('从现有文件加载数据库:', dbPath);
+      } catch (err) {
+        console.warn('无法从现有文件加载数据库，创建新数据库:', err);
+        db = new SQL.Database();
+      }
     } else {
       // 创建新数据库
       db = new SQL.Database();

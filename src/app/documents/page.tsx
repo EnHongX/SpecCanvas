@@ -1,16 +1,22 @@
 import Link from 'next/link';
 import { documentModel } from '@/lib/models/document';
-import { Document } from '@/lib/types';
 
 export default async function DocumentsPage() {
-  let documents: Document[] = [];
+  let documents = [];
   let totalDocuments = 0;
   
   try {
-    documents = await documentModel.getAll(50);
+    // 使用与首页相同的参数，以确保一致性
+    console.log('开始获取文档列表...');
+    documents = await documentModel.getAll(5);
+    console.log('获取到文档数量:', documents.length);
     totalDocuments = await documentModel.count();
+    console.log('总文档数量:', totalDocuments);
   } catch (error) {
     console.error('Error fetching documents:', error);
+    // 确保即使出错也能渲染页面
+    documents = [];
+    totalDocuments = 0;
   }
 
   const getStatusBadgeClass = (status: string) => {
@@ -91,8 +97,7 @@ export default async function DocumentsPage() {
                 {documents.map((doc) => (
                   <tr 
                     key={doc.id} 
-                    className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-                    onClick={() => window.location.href = `/documents/${doc.id}`}
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <Link
