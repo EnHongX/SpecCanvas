@@ -43,6 +43,289 @@ interface ApiResponse<T> {
   errorType?: string;
 }
 
+const COLOR_PATTERNS = [
+  /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/,
+  /^rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)$/i,
+  /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*[\d.]+\s*\)$/i,
+  /^hsl\(\s*\d+\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*\)$/i,
+  /^hsla\(\s*\d+\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+\s*\)$/i,
+];
+
+const CSS_COLOR_NAMES = [
+  'transparent', 'currentColor', 'inherit',
+  'aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure',
+  'beige', 'bisque', 'black', 'blanchedalmond', 'blue',
+  'blueviolet', 'brown', 'burlywood', 'cadetblue', 'chartreuse',
+  'chocolate', 'coral', 'cornflowerblue', 'cornsilk', 'crimson',
+  'cyan', 'darkblue', 'darkcyan', 'darkgoldenrod', 'darkgray',
+  'darkgreen', 'darkgrey', 'darkkhaki', 'darkmagenta', 'darkolivegreen',
+  'darkorange', 'darkorchid', 'darkred', 'darksalmon', 'darkseagreen',
+  'darkslateblue', 'darkslategray', 'darkslategrey', 'darkturquoise', 'darkviolet',
+  'deeppink', 'deepskyblue', 'dimgray', 'dimgrey', 'dodgerblue',
+  'firebrick', 'floralwhite', 'forestgreen', 'fuchsia', 'gainsboro',
+  'ghostwhite', 'gold', 'goldenrod', 'gray', 'green',
+  'greenyellow', 'grey', 'honeydew', 'hotpink', 'indianred',
+  'indigo', 'ivory', 'khaki', 'lavender', 'lavenderblush',
+  'lawngreen', 'lemonchiffon', 'lightblue', 'lightcoral', 'lightcyan',
+  'lightgoldenrodyellow', 'lightgray', 'lightgreen', 'lightgrey', 'lightpink',
+  'lightsalmon', 'lightseagreen', 'lightskyblue', 'lightslategray', 'lightslategrey',
+  'lightsteelblue', 'lightyellow', 'lime', 'limegreen', 'linen',
+  'magenta', 'maroon', 'mediumaquamarine', 'mediumblue', 'mediumorchid',
+  'mediumpurple', 'mediumseagreen', 'mediumslateblue', 'mediumspringgreen', 'mediumturquoise',
+  'mediumvioletred', 'midnightblue', 'mintcream', 'mistyrose', 'moccasin',
+  'navajowhite', 'navy', 'oldlace', 'olive', 'olivedrab',
+  'orange', 'orangered', 'orchid', 'palegoldenrod', 'palegreen',
+  'paleturquoise', 'palevioletred', 'papayawhip', 'peachpuff', 'peru',
+  'pink', 'plum', 'powderblue', 'purple', 'rebeccapurple',
+  'red', 'rosybrown', 'royalblue', 'saddlebrown', 'salmon',
+  'sandybrown', 'seagreen', 'seashell', 'sienna', 'silver',
+  'skyblue', 'slateblue', 'slategray', 'slategrey', 'snow',
+  'springgreen', 'steelblue', 'tan', 'teal', 'thistle',
+  'tomato', 'turquoise', 'violet', 'wheat', 'white',
+  'whitesmoke', 'yellow', 'yellowgreen'
+];
+
+const SPACING_UNITS = ['px', 'rem', 'em', '%', 'vh', 'vw', 'vmin', 'vmax', 'ch', 'ex'];
+
+const INVALID_TYPOGRAPHY_KEYS = ['key', 'white', 'font', 'color', 'colors', 'spacing', 'breakpoint', 'breakpoints'];
+
+const isValidColor = (value: string): boolean => {
+  const trimmed = value.trim().toLowerCase();
+  if (CSS_COLOR_NAMES.includes(trimmed)) return true;
+  return COLOR_PATTERNS.some(pattern => pattern.test(trimmed));
+};
+
+const isLikelySpacingValue = (value: string): boolean => {
+  const trimmed = value.trim();
+  
+  if (/^\d+$/.test(trimmed)) {
+    const num = parseInt(trimmed, 10);
+    return num >= 0 && num <= 500;
+  }
+  
+  for (const unit of SPACING_UNITS) {
+    if (trimmed.toLowerCase().endsWith(unit.toLowerCase())) {
+      const numPart = trimmed.slice(0, -unit.length);
+      if (/^[\d.]+$/.test(numPart)) {
+        return true;
+      }
+    }
+  }
+  
+  if (/^calc\(.+\)$/i.test(trimmed)) return true;
+  if (/^min\(.+\)$/i.test(trimmed)) return true;
+  if (/^max\(.+\)$/i.test(trimmed)) return true;
+  if (/^clamp\(.+\)$/i.test(trimmed)) return true;
+  
+  return false;
+};
+
+const isLikelyTypographyValue = (value: string): boolean => {
+  const trimmed = value.trim().toLowerCase();
+  
+  if (trimmed.startsWith('#') || isValidColor(trimmed)) return false;
+  if (isLikelySpacingValue(trimmed)) return false;
+  
+  const typographyPatterns = [
+    /^\d+(?:px|rem|em|pt)$/,
+    /^\d+(?:px|rem|em|pt)\s+\/\s*\d+(?:px|rem|em|pt)?$/,
+    /^(normal|bold|lighter|bolder|[1-9]00)$/,
+    /^(sans-serif|serif|monospace|cursive|fantasy)$/,
+    /^(left|center|right|justify)$/,
+    /^(uppercase|lowercase|capitalize|none)$/,
+    /^(italic|oblique|normal)$/,
+    /^['"].*['"]$/,
+    /^[A-Z][a-zA-Z\s-]+$/,
+  ];
+  
+  return typographyPatterns.some(pattern => pattern.test(trimmed));
+};
+
+const isInvalidTypographyKey = (key: string): boolean => {
+  const lowerKey = key.trim().toLowerCase();
+  return INVALID_TYPOGRAPHY_KEYS.includes(lowerKey);
+};
+
+const parseRangeValue = (value: string): string => {
+  const trimmed = value.trim();
+  
+  const rangeMatch = trimmed.match(/^(\d+(?:px|rem|em|%)?)\s*[-–—]\s*(\d+(?:px|rem|em|%)?)$/);
+  if (rangeMatch) {
+    return `${rangeMatch[1]}–${rangeMatch[2]}`;
+  }
+  
+  const multiRangeMatch = trimmed.match(/^(\d+(?:px|rem|em|%)?)\s*[-–—]\s*(\d+(?:px|rem|em|%)?)\s*[-–—]\s*(\d+(?:px|rem|em|%)?)$/);
+  if (multiRangeMatch) {
+    return `${multiRangeMatch[1]}–${multiRangeMatch[2]}–${multiRangeMatch[3]}`;
+  }
+  
+  return trimmed;
+};
+
+const parseKeyValue = (line: string): { key: string; value: string } | null => {
+  const trimmed = line.trim();
+  
+  if (trimmed.startsWith('- [ ]') || trimmed.startsWith('- [x]')) {
+    return null;
+  }
+  
+  const patterns = [
+    /^[*-]?\s*[`"]?([\w\s\-._/]+)[`"]?\s*[:：]\s*(.+)$/,
+    /^[*-]?\s*[`"]?([\w\s\-._/]+)[`"]?\s+[-–—]\s+(.+)$/,
+    /^[*-]?\s*[`"]?([\w\s\-._/]+)[`"]?\s*=\s*(.+)$/,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = trimmed.match(pattern);
+    if (match) {
+      let key = match[1].trim();
+      let value = match[2].trim();
+      
+      value = value.replace(/^[`"\s]+|[`"\s,.;]+$/g, '');
+      key = key.replace(/^[`"\s]+|[`"\s]+$/g, '');
+      
+      value = parseRangeValue(value);
+      
+      if (key && value) {
+        return { key, value };
+      }
+    }
+  }
+  
+  return null;
+};
+
+const parseDocumentToSchema = (doc: Document): { meta: Partial<SchemaMeta>; tokens: Partial<SchemaTokens>; unresolved: string[] } => {
+  const markdown = doc.raw_markdown;
+  const lines = markdown.split('\n');
+  
+  const meta: Partial<SchemaMeta> = {
+    name: doc.title,
+    description: '',
+    keywords: [],
+  };
+  
+  const tokens: Partial<SchemaTokens> = {
+    colors: {},
+    typography: {},
+    spacing: {},
+  };
+  
+  const unresolved: string[] = [];
+  
+  const frontmatterMatch = markdown.match(/^---\n([\s\S]*?)\n---/);
+  if (frontmatterMatch) {
+    const frontmatter = frontmatterMatch[1];
+    const fmLines = frontmatter.split('\n');
+    
+    for (const line of fmLines) {
+      const kv = parseKeyValue(line);
+      if (kv) {
+        const lowerKey = kv.key.toLowerCase();
+        if (lowerKey === 'title' || lowerKey === 'name') {
+          meta.name = kv.value;
+        } else if (lowerKey === 'description' || lowerKey === 'desc') {
+          meta.description = kv.value;
+        } else if (lowerKey === 'keywords' || lowerKey === 'tags') {
+          meta.keywords = kv.value.split(/[,\s]+/).filter(k => k.trim());
+        }
+      }
+    }
+  }
+  
+  let currentSection: 'colors' | 'typography' | 'spacing' | 'none' = 'none';
+  let sectionDepth = 0;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    
+    if (trimmed.startsWith('- [ ]') || trimmed.startsWith('- [x]')) {
+      unresolved.push(trimmed.replace(/^- \[[ x]\]\s*/, ''));
+      continue;
+    }
+    
+    const headerMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (headerMatch) {
+      const headerLevel = headerMatch[1].length;
+      const headerText = headerMatch[2].toLowerCase();
+      
+      if (headerLevel <= sectionDepth) {
+        currentSection = 'none';
+      }
+      
+      sectionDepth = headerLevel;
+      
+      if (headerText.includes('color') || headerText.includes('颜色')) {
+        currentSection = 'colors';
+      } else if (headerText.includes('typograph') || headerText.includes('字体') || headerText.includes('文字') || headerText.includes('排版')) {
+        currentSection = 'typography';
+      } else if (headerText.includes('spacing') || headerText.includes('间距') || headerText.includes('space') || headerText.includes('breakpoint')) {
+        currentSection = 'spacing';
+      }
+      
+      continue;
+    }
+    
+    const boldSectionMatch = trimmed.match(/^\*\*([^*]+)\*\*[:：]?\s*$/);
+    if (boldSectionMatch) {
+      const sectionText = boldSectionMatch[1].toLowerCase();
+      
+      if (sectionText.includes('color') || sectionText.includes('颜色')) {
+        currentSection = 'colors';
+      } else if (sectionText.includes('typograph') || sectionText.includes('字体') || sectionText.includes('文字') || sectionText.includes('排版')) {
+        currentSection = 'typography';
+      } else if (sectionText.includes('spacing') || sectionText.includes('间距') || sectionText.includes('space') || sectionText.includes('breakpoint')) {
+        currentSection = 'spacing';
+      }
+      
+      continue;
+    }
+    
+    if (currentSection === 'none') {
+      if (!meta.description && trimmed.length > 20 && !trimmed.startsWith('#') && !trimmed.startsWith('---')) {
+        let descLines: string[] = [];
+        let j = i;
+        while (j < lines.length && !lines[j].trim().startsWith('#') && !lines[j].trim().startsWith('---')) {
+          const lineText = lines[j].trim();
+          if (lineText) {
+            descLines.push(lineText);
+          }
+          if (descLines.length >= 3) break;
+          j++;
+        }
+        meta.description = descLines.join(' ').substring(0, 200);
+      }
+      continue;
+    }
+    
+    const kv = parseKeyValue(trimmed);
+    if (kv) {
+      const { key, value } = kv;
+      
+      if (currentSection === 'colors') {
+        if (isValidColor(value)) {
+          tokens.colors![key] = value;
+        }
+      } else if (currentSection === 'typography') {
+        if (!isInvalidTypographyKey(key) && isLikelyTypographyValue(value)) {
+          tokens.typography![key] = value;
+        }
+      } else if (currentSection === 'spacing') {
+        if (isLikelySpacingValue(value)) {
+          tokens.spacing![key] = value;
+        }
+      }
+    }
+  }
+  
+  return {
+    meta,
+    tokens,
+    unresolved,
+  };
+};
+
 export default function SchemaPage() {
   const router = useRouter();
   const params = useParams();
@@ -63,13 +346,8 @@ export default function SchemaPage() {
     }
 
     try {
-      const [docResponse, schemaResponse] = await Promise.all([
-        fetch(`/api/documents/${documentId}`),
-        fetch(`/api/documents/${documentId}/schema`),
-      ]);
-
+      const docResponse = await fetch(`/api/documents/${documentId}`);
       const docData: ApiResponse<Document> = await docResponse.json();
-      const schemaData: ApiResponse<Schema> = await schemaResponse.json();
 
       if (!docResponse.ok || !docData.success || !docData.data) {
         setError(docData.error || '获取文档失败');
@@ -78,6 +356,9 @@ export default function SchemaPage() {
       }
 
       setDocument(docData.data);
+
+      const schemaResponse = await fetch(`/api/documents/${documentId}/schema`);
+      const schemaData: ApiResponse<Schema> = await schemaResponse.json();
 
       if (schemaResponse.ok && schemaData.success && schemaData.data) {
         setSchema(schemaData.data);
@@ -97,91 +378,6 @@ export default function SchemaPage() {
     fetchData();
   }, [documentId]);
 
-  const parseDocumentToSchema = (doc: Document): Partial<Schema> => {
-    const markdown = doc.raw_markdown;
-    const lines = markdown.split('\n');
-    
-    const meta: Partial<SchemaMeta> = {
-      name: doc.title,
-      description: '',
-      keywords: [],
-    };
-    
-    const tokens: Partial<SchemaTokens> = {
-      colors: {},
-      typography: {},
-      spacing: {},
-    };
-    
-    const unresolved: string[] = [];
-    
-    let inColorsSection = false;
-    let inTypographySection = false;
-    let inSpacingSection = false;
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      
-      if (line.toLowerCase().includes('color') || line.toLowerCase().includes('颜色')) {
-        inColorsSection = true;
-        inTypographySection = false;
-        inSpacingSection = false;
-        continue;
-      }
-      
-      if (line.toLowerCase().includes('typography') || line.toLowerCase().includes('字体') || line.toLowerCase().includes('文字')) {
-        inColorsSection = false;
-        inTypographySection = true;
-        inSpacingSection = false;
-        continue;
-      }
-      
-      if (line.toLowerCase().includes('spacing') || line.toLowerCase().includes('间距') || line.toLowerCase().includes('space')) {
-        inColorsSection = false;
-        inTypographySection = false;
-        inSpacingSection = true;
-        continue;
-      }
-      
-      const colorMatch = line.match(/^[#\-*\s]*([\w\-_]+)[\s:：]+(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\))/i);
-      if (colorMatch && inColorsSection) {
-        const [, key, value] = colorMatch;
-        if (key && value && tokens.colors) {
-          tokens.colors[key.trim()] = value.trim();
-          continue;
-        }
-      }
-      
-      const typographyMatch = line.match(/^[#\-*\s]*([\w\-_]+)[\s:：]+(.+)$/);
-      if (typographyMatch && inTypographySection) {
-        const [, key, value] = typographyMatch;
-        if (key && value && !value.startsWith('#') && tokens.typography) {
-          tokens.typography[key.trim()] = value.trim();
-          continue;
-        }
-      }
-      
-      const spacingMatch = line.match(/^[#\-*\s]*([\w\-_]+)[\s:：]+(\d+(?:px|rem|em|%)?)/i);
-      if (spacingMatch && inSpacingSection) {
-        const [, key, value] = spacingMatch;
-        if (key && value && tokens.spacing) {
-          tokens.spacing[key.trim()] = value.trim();
-          continue;
-        }
-      }
-      
-      if (line.startsWith('- [ ]') || line.startsWith('- [x]')) {
-        unresolved.push(line.replace(/^- \[[ x]\]\s*/, ''));
-      }
-    }
-    
-    return {
-      meta: meta as SchemaMeta,
-      tokens: tokens as SchemaTokens,
-      unresolved,
-    };
-  };
-
   const handleSync = async () => {
     if (!document) return;
     
@@ -199,7 +395,11 @@ export default function SchemaPage() {
         },
         body: JSON.stringify({
           meta: { ...schema?.meta, ...parsedSchema.meta },
-          tokens: { ...schema?.tokens, ...parsedSchema.tokens },
+          tokens: {
+            colors: { ...schema?.tokens.colors, ...parsedSchema.tokens.colors },
+            typography: { ...schema?.tokens.typography, ...parsedSchema.tokens.typography },
+            spacing: { ...schema?.tokens.spacing, ...parsedSchema.tokens.spacing },
+          },
           unresolved: parsedSchema.unresolved && parsedSchema.unresolved.length > 0 
             ? parsedSchema.unresolved 
             : schema?.unresolved,

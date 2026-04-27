@@ -78,9 +78,49 @@ const loadSqlJs = async () => {
   }
 };
 
-// 初始化数据库
+const ensureTablesExist = (database: SqlJsDatabase) => {
+  const createDocumentsTable = `
+    CREATE TABLE IF NOT EXISTS documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      raw_markdown TEXT NOT NULL,
+      status TEXT DEFAULT 'draft' NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+    );
+  `;
+
+  database.run(createDocumentsTable);
+
+  const createSchemasTable = `
+    CREATE TABLE IF NOT EXISTS schemas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      document_id INTEGER NOT NULL,
+      meta TEXT NOT NULL,
+      tokens TEXT NOT NULL,
+      unresolved TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+      UNIQUE(document_id)
+    );
+  `;
+
+  database.run(createSchemasTable);
+
+  const createIndexes = `
+    CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at);
+    CREATE INDEX IF NOT EXISTS idx_documents_updated_at ON documents(updated_at);
+    CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
+  `;
+
+  database.run(createIndexes);
+};
+
 const initDatabase = async (): Promise<SqlJsDatabase> => {
   if (isInitialized && db) {
+    ensureTablesExist(db);
     return db;
   }
 
@@ -89,13 +129,10 @@ const initDatabase = async (): Promise<SqlJsDatabase> => {
     
     console.log('正在初始化数据库...');
     
-    // 动态加载 SQL.js
     const SQL = await loadSqlJs();
     console.log('SQL.js 加载成功');
     
-    // 检查是否存在现有的数据库文件
     if (fs.existsSync(dbPath)) {
-      // 从文件加载现有数据库
       try {
         const fileBuffer = fs.readFileSync(dbPath);
         db = new SQL.Database(fileBuffer);
@@ -105,53 +142,11 @@ const initDatabase = async (): Promise<SqlJsDatabase> => {
         db = new SQL.Database();
       }
     } else {
-      // 创建新数据库
       db = new SQL.Database();
       console.log('创建新数据库:', dbPath);
     }
 
-    // 创建文档表（如果不存在）
-    const createDocumentsTable = `
-      CREATE TABLE IF NOT EXISTS documents (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        source_type TEXT NOT NULL,
-        raw_markdown TEXT NOT NULL,
-        status TEXT DEFAULT 'draft' NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
-      );
-    `;
-
-    db.run(createDocumentsTable);
-
-    // 创建 schemas 表（如果不存在）
-    const createSchemasTable = `
-      CREATE TABLE IF NOT EXISTS schemas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        document_id INTEGER NOT NULL,
-        meta TEXT NOT NULL,
-        tokens TEXT NOT NULL,
-        unresolved TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
-        UNIQUE(document_id)
-      );
-    `;
-
-    db.run(createSchemasTable);
-
-    // 为 created_at 和 updated_at 创建索引
-    const createIndexes = `
-      CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at);
-      CREATE INDEX IF NOT EXISTS idx_documents_updated_at ON documents(updated_at);
-      CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
-    `;
-
-    db.run(createIndexes);
-    
-    // 保存数据库
+    ensureTablesExist(db);
     saveDatabase();
     
     isInitialized = true;
