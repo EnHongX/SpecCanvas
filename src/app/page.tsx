@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { documentModel } from '@/lib/models/document';
+import type { Document } from '@/lib/types';
 
 export default async function Home() {
-  let documents = [];
+  let documents: Document[] = [];
   let totalDocuments = 0;
   
   try {
