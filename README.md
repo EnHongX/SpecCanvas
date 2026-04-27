@@ -6,6 +6,7 @@
 
 - **多种导入方式**：支持上传本地 Markdown 文件或直接粘贴 Markdown 内容
 - **文档管理**：查看文档列表、文档详情，支持状态管理（草稿/已发布/已归档）
+- **Schema v0 编辑**：为每个文档维护一份最小 Schema，支持首次自动创建、手动编辑和保存
 - **本地存储**：使用 SQLite 本地数据库，所有数据保存在本地，安全可靠
 - **现代化 UI**：基于 Tailwind CSS 构建的现代化界面，支持深色模式
 - **内容统计**：自动统计文档字符数、行数等信息
@@ -15,7 +16,7 @@
 - **框架**: Next.js 14 (App Router)
 - **语言**: TypeScript
 - **样式**: Tailwind CSS
-- **数据库**: SQLite (better-sqlite3)
+- **数据库**: SQLite (sql.js)
 - **其他**: React 18
 
 ## 项目结构
@@ -28,21 +29,31 @@ SpecCanvas/
 │   │   │   └── documents/          # API 路由
 │   │   │       ├── route.ts        # 文档列表和创建
 │   │   │       └── [id]/
-│   │   │           └── route.ts    # 单个文档操作
+│   │   │           ├── route.ts    # 单个文档操作
+│   │   │           └── schema/
+│   │   │               └── route.ts # 文档 Schema 操作
 │   │   ├── documents/
 │   │   │   ├── page.tsx            # 文档列表页
 │   │   │   ├── new/
 │   │   │   │   └── page.tsx        # 新建/导入页
 │   │   │   └── [id]/
-│   │   │       └── page.tsx        # 文档详情页
+│   │   │       ├── page.tsx        # 文档详情页
+│   │   │       ├── edit/
+│   │   │       │   └── page.tsx    # 文档编辑页
+│   │   │       └── schema/
+│   │   │           └── page.tsx    # Schema 编辑页
 │   │   ├── globals.css             # 全局样式
 │   │   ├── layout.tsx              # 根布局
 │   │   └── page.tsx                # 首页
 │   └── lib/
 │       ├── database.ts             # 数据库连接和初始化
+│       ├── schema-v0.ts            # Schema v0 默认结构和校验
 │       ├── types.ts                # TypeScript 类型定义
 │       └── models/
-│           └── document.ts         # 文档数据模型
+│           ├── document.ts         # 文档数据模型
+│           └── schema.ts           # Schema 数据模型
+├── scripts/
+│   └── schema-v0-smoke-test.mjs    # Schema v0 回归测试
 ├── package.json
 ├── tsconfig.json
 ├── tailwind.config.ts
@@ -136,7 +147,23 @@ pnpm start
   - 文档 ID
 - 显示原始 Markdown 内容
 - 内容统计信息（字符数、行数）
-- 提供返回列表页的按钮
+- 提供返回列表页、编辑页和 Schema 页入口
+
+### Schema 编辑页 (`/documents/[id]/schema`)
+
+- 任意已创建文档都可以进入 Schema 编辑页
+- 首次进入时，如果文档还没有 Schema，会自动创建默认空结构
+- 当前 Schema v0 只包含：
+  - `meta.name`
+  - `meta.description`
+  - `meta.keywords`
+  - `tokens.colors`
+  - `tokens.typography`
+  - `tokens.spacing`
+  - `unresolved`
+- 支持直接编辑 JSON 并保存
+- 保存失败时会显示具体字段错误
+- 当前版本不包含 Markdown 自动解析、可视化预览、主题切换或导出功能
 
 ## API 接口
 
@@ -204,6 +231,62 @@ pnpm start
 
 删除文档。
 
+### GET `/api/documents/[id]/schema`
+
+获取文档 Schema。如果该文档还没有 Schema，会创建并返回默认 Schema v0。
+
+**默认响应中的 Schema 内容：**
+
+```json
+{
+  "meta": {
+    "name": "",
+    "description": "",
+    "keywords": []
+  },
+  "tokens": {
+    "colors": {},
+    "typography": {},
+    "spacing": {}
+  },
+  "unresolved": []
+}
+```
+
+### PUT `/api/documents/[id]/schema`
+
+保存文档 Schema。请求体必须是完整 Schema v0 内容。
+
+**请求体：**
+
+```json
+{
+  "meta": {
+    "name": "Landing Page",
+    "description": "首页设计规范",
+    "keywords": ["landing", "homepage"]
+  },
+  "tokens": {
+    "colors": {
+      "primary": "#111827"
+    },
+    "typography": {
+      "body": "16px/1.5 sans-serif"
+    },
+    "spacing": {
+      "md": "16px"
+    }
+  },
+  "unresolved": ["确认移动端导航状态"]
+}
+```
+
+校验失败时会返回 `details`，用于指出具体字段问题。
+
+### POST `/api/documents/[id]/schema`
+
+确保文档 Schema 存在。如果已存在则返回现有 Schema，否则创建默认 Schema v0。
+
 ## 数据库结构
 
 ### documents 表
@@ -217,6 +300,18 @@ pnpm start
 | status | TEXT | 状态：'draft', 'published', 'archived'，默认 'draft' |
 | created_at | DATETIME | 创建时间，默认当前时间 |
 | updated_at | DATETIME | 更新时间，默认当前时间 |
+
+### schemas 表
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| id | INTEGER | 主键，自增 |
+| document_id | INTEGER | 关联的文档 ID，唯一 |
+| meta | TEXT | Schema v0 的 meta JSON |
+| tokens | TEXT | Schema v0 的 tokens JSON |
+| unresolved | TEXT | 未解决项 JSON 数组 |
+| created_at | DATETIME | 创建时间 |
+| updated_at | DATETIME | 更新时间 |
 
 ## 数据库文件
 
@@ -247,6 +342,20 @@ npm run lint
 ```bash
 npx tsc --noEmit
 ```
+
+### Schema v0 回归测试
+
+```bash
+npm run test:schema
+```
+
+该脚本会使用临时数据库启动本地开发服务，覆盖：
+
+- 创建文档
+- 首次读取 Schema 并自动生成默认结构
+- 手动保存 Schema
+- 再次读取确认保存结果仍然存在
+- 提交非法 Schema 时返回具体字段错误
 
 ## License
 
