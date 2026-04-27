@@ -31,6 +31,45 @@ export type ErrorType =
   | 'network_error' 
   | 'unknown_error';
 
+export interface SchemaMeta {
+  name: string;
+  description: string;
+  keywords: string[];
+}
+
+export interface SchemaTokens {
+  colors: Record<string, string>;
+  typography: Record<string, string>;
+  spacing: Record<string, string>;
+}
+
+export interface Schema {
+  id: number;
+  document_id: number;
+  meta: SchemaMeta;
+  tokens: SchemaTokens;
+  unresolved: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateSchemaRequest {
+  document_id: number;
+  meta?: Partial<SchemaMeta>;
+  tokens?: Partial<SchemaTokens>;
+  unresolved?: string[];
+}
+
+export interface UpdateSchemaRequest {
+  meta?: Partial<SchemaMeta>;
+  tokens?: Partial<SchemaTokens>;
+  unresolved?: string[];
+}
+
+export interface SyncSchemaRequest {
+  document_id: number;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;

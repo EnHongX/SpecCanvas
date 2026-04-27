@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { documentModel } from '@/lib/models/document';
+import DeleteDocumentButton from '@/components/DeleteDocumentButton';
 
 export default async function DocumentsPage() {
   let documents = [];
@@ -91,6 +92,9 @@ export default async function DocumentsPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     更新时间
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    操作
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -122,6 +126,23 @@ export default async function DocumentsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                       {new Date(doc.updated_at).toLocaleString('zh-CN')}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <div className="flex items-center space-x-4">
+                        <Link
+                          href={`/documents/${doc.id}`}
+                          className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium"
+                        >
+                          查看
+                        </Link>
+                        <Link
+                          href={`/documents/${doc.id}/schema`}
+                          className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 font-medium"
+                        >
+                          Schema
+                        </Link>
+                        <DeleteDocumentButton documentId={doc.id} documentTitle={doc.title} />
+                      </div>
                     </td>
                   </tr>
                 ))}
