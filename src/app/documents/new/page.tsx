@@ -14,7 +14,24 @@ interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
+  errorType?: string;
 }
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_FILE_TYPES = ['.md', '.markdown'];
+const ALLOWED_MIME_TYPES = ['text/markdown', 'text/plain'];
+
+// 错误类型到用户友好提示的映射
+const ERROR_TYPE_MESSAGES: Record<string, string> = {
+  'validation_error': '输入验证失败',
+  'file_format_error': '文件格式错误',
+  'file_size_error': '文件大小超出限制',
+  'file_read_error': '文件读取失败',
+  'database_error': '数据库操作失败',
+  'server_error': '服务器内部错误',
+  'network_error': '网络连接失败',
+  'unknown_error': '发生未知错误'
+};
 
 export default function NewDocumentPage() {
   const router = useRouter();
@@ -53,11 +70,57 @@ export default function NewDocumentPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // 验证文件类型
+    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+    const isValidExtension = ALLOWED_FILE_TYPES.includes(fileExtension);
+    const isValidMimeType = ALLOWED_MIME_TYPES.includes(file.type) || file.type === '';
+    
+    if (!isValidExtension) {
+      setError(`不支持的文件格式。请上传 ${ALLOWED_FILE_TYPES.join(' 或 ')} 格式的文件。`);
+      setFileName(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    // 验证文件大小
+    if (file.size > MAX_FILE_SIZE) {
+      const sizeInMB = (MAX_FILE_SIZE / (1024 * 1024)).toFixed(1);
+      setError(`文件大小超出限制。最大允许 ${sizeInMB}MB，请选择更小的文件。`);
+      setFileName(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    // 验证文件是否为空
+    if (file.size === 0) {
+      setError('文件为空，请选择包含内容的 Markdown 文件。');
+      setFileName(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
     setFileName(file.name);
     
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
+      
+      // 验证文件内容
+      if (!content || content.trim() === '') {
+        setError('文件内容为空，请选择包含有效 Markdown 内容的文件。');
+        setFileName(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
       setFormState(prev => ({ 
         ...prev, 
         raw_markdown: content,
@@ -69,9 +132,15 @@ export default function NewDocumentPage() {
       if (titleFromFileName && !formState.title) {
         setFormState(prev => ({ ...prev, title: titleFromFileName }));
       }
+      
+      setError(null);
     };
     reader.onerror = () => {
-      setError('文件读取失败，请尝试重新上传');
+      setError('文件读取失败，请尝试重新上传或选择其他文件。');
+      setFileName(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     };
     reader.readAsText(file);
   };
@@ -91,33 +160,77 @@ export default function NewDocumentPage() {
       return;
     }
     
+    // 额外验证
+    if (formState.title.length > 200) {
+      setError('标题长度不能超过 200 个字符');
+      return;
+    }
+    
+    // 验证内容大小
+    const contentSize = new Blob([formState.raw_markdown]).size;
+    if (contentSize > MAX_FILE_SIZE) {
+      const sizeInMB = (MAX_FILE_SIZE / (1024 * 1024)).toFixed(1);
+      setError(`内容大小超出限制。最大允许 ${sizeInMB}MB，请减少内容长度。`);
+      return;
+    }
+    
     setIsSubmitting(true);
     
     try {
-      const response = await fetch('/api/documents', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: formState.title.trim(),
-          raw_markdown: formState.raw_markdown,
-          source_type: formState.source_type,
-          status: formState.status,
-        }),
-      });
+      let response: Response;
+      try {
+        response = await fetch('/api/documents', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: formState.title.trim(),
+            raw_markdown: formState.raw_markdown,
+            source_type: formState.source_type,
+            status: formState.status,
+          }),
+        });
+      } catch (fetchError) {
+        // 网络错误
+        console.error('Network error:', fetchError);
+        setError('网络连接失败，请检查您的网络连接后重试。');
+        return;
+      }
       
-      const data: ApiResponse<{ id: number }> = await response.json();
+      let data: ApiResponse<{ id: number }>;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        // 响应解析错误
+        console.error('Error parsing response:', parseError);
+        setError('服务器响应格式错误，请稍后重试。');
+        return;
+      }
       
       if (!response.ok || !data.success) {
-        throw new Error(data.error || '创建文档失败');
+        // 根据错误类型显示不同的提示
+        const errorMessage = data.error || '创建文档失败';
+        const errorType = data.errorType;
+        
+        if (errorType) {
+          // 如果有错误类型，使用更详细的提示
+          const typeMessage = ERROR_TYPE_MESSAGES[errorType] || '创建文档失败';
+          setError(`${typeMessage}: ${errorMessage}`);
+        } else {
+          // 如果没有错误类型，使用通用提示
+          setError(errorMessage);
+        }
+        return;
       }
       
       // 跳转到文档列表页
       router.push('/documents');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建文档失败，请重试');
+      // 捕获所有其他错误
+      console.error('Unexpected error:', err);
+      setError('创建文档时发生未知错误，请稍后重试。');
     } finally {
       setIsSubmitting(false);
     }
