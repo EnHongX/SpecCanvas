@@ -125,6 +125,23 @@ const initDatabase = async (): Promise<SqlJsDatabase> => {
 
     db.run(createDocumentsTable);
 
+    // 创建 schemas 表（如果不存在）
+    const createSchemasTable = `
+      CREATE TABLE IF NOT EXISTS schemas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        document_id INTEGER NOT NULL,
+        meta TEXT NOT NULL,
+        tokens TEXT NOT NULL,
+        unresolved TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+        UNIQUE(document_id)
+      );
+    `;
+
+    db.run(createSchemasTable);
+
     // 为 created_at 和 updated_at 创建索引
     const createIndexes = `
       CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at);
