@@ -76,7 +76,7 @@ export const documentModel = {
       return [];
     }
     
-    return result[0].values.map(document => ({
+    return result[0].values.map((document: unknown[]) => ({
       id: document[0] as number,
       title: document[1] as string,
       source_type: document[2] as 'file' | 'paste',

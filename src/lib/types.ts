@@ -41,12 +41,12 @@ export interface SchemaTokens {
   colors: Record<string, string>;
   typography: Record<string, string>;
   spacing: Record<string, string>;
-  radii: Record<string, string>;
-  breakpoints: Record<string, string>;
-  shadows: Record<string, string>;
-  borders: Record<string, string>;
-  opacity: Record<string, string>;
-  zIndex: Record<string, string>;
+}
+
+export interface SchemaContent {
+  meta: SchemaMeta;
+  tokens: SchemaTokens;
+  unresolved: string[];
 }
 
 export interface Schema {
@@ -67,13 +67,9 @@ export interface CreateSchemaRequest {
 }
 
 export interface UpdateSchemaRequest {
-  meta?: Partial<SchemaMeta>;
-  tokens?: Partial<SchemaTokens>;
-  unresolved?: string[];
-}
-
-export interface SyncSchemaRequest {
-  document_id: number;
+  meta: SchemaMeta;
+  tokens: SchemaTokens;
+  unresolved: string[];
 }
 
 export interface ApiResponse<T> {
@@ -81,4 +77,5 @@ export interface ApiResponse<T> {
   data?: T;
   error?: string;
   errorType?: ErrorType;
+  details?: string[];
 }

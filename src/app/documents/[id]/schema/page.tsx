@@ -1,603 +1,172 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { validateSchemaContent } from '@/lib/schema-v0';
+import type { ApiResponse, Document, Schema, SchemaContent } from '@/lib/types';
 
-interface SchemaMeta {
-  name: string;
-  description: string;
-  keywords: string[];
-}
+const toEditableSchema = (schema: Schema): SchemaContent => ({
+  meta: schema.meta,
+  tokens: schema.tokens,
+  unresolved: schema.unresolved,
+});
 
-interface SchemaTokens {
-  colors: Record<string, string>;
-  typography: Record<string, string>;
-  spacing: Record<string, string>;
-  radii: Record<string, string>;
-  breakpoints: Record<string, string>;
-  shadows: Record<string, string>;
-  borders: Record<string, string>;
-  opacity: Record<string, string>;
-  zIndex: Record<string, string>;
-}
-
-interface Schema {
-  id: number;
-  document_id: number;
-  meta: SchemaMeta;
-  tokens: SchemaTokens;
-  unresolved: string[];
-  created_at: string;
-  updated_at: string;
-}
-
-interface Document {
-  id: number;
-  title: string;
-  source_type: 'file' | 'paste';
-  raw_markdown: string;
-  status: 'draft' | 'published' | 'archived';
-  created_at: string;
-  updated_at: string;
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  errorType?: string;
-}
-
-type TokenCategory = keyof SchemaTokens;
-
-const COLOR_PATTERNS = [
-  /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/,
-  /^rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)$/i,
-  /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*[\d.]+\s*\)$/i,
-  /^hsl\(\s*\d+\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*\)$/i,
-  /^hsla\(\s*\d+\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+\s*\)$/i,
-];
-
-const CSS_COLOR_NAMES = [
-  'transparent', 'currentColor', 'inherit',
-  'aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure',
-  'beige', 'bisque', 'black', 'blanchedalmond', 'blue',
-  'blueviolet', 'brown', 'burlywood', 'cadetblue', 'chartreuse',
-  'chocolate', 'coral', 'cornflowerblue', 'cornsilk', 'crimson',
-  'cyan', 'darkblue', 'darkcyan', 'darkgoldenrod', 'darkgray',
-  'darkgreen', 'darkgrey', 'darkkhaki', 'darkmagenta', 'darkolivegreen',
-  'darkorange', 'darkorchid', 'darkred', 'darksalmon', 'darkseagreen',
-  'darkslateblue', 'darkslategray', 'darkslategrey', 'darkturquoise', 'darkviolet',
-  'deeppink', 'deepskyblue', 'dimgray', 'dimgrey', 'dodgerblue',
-  'firebrick', 'floralwhite', 'forestgreen', 'fuchsia', 'gainsboro',
-  'ghostwhite', 'gold', 'goldenrod', 'gray', 'green',
-  'greenyellow', 'grey', 'honeydew', 'hotpink', 'indianred',
-  'indigo', 'ivory', 'khaki', 'lavender', 'lavenderblush',
-  'lawngreen', 'lemonchiffon', 'lightblue', 'lightcoral', 'lightcyan',
-  'lightgoldenrodyellow', 'lightgray', 'lightgreen', 'lightgrey', 'lightpink',
-  'lightsalmon', 'lightseagreen', 'lightskyblue', 'lightslategray', 'lightslategrey',
-  'lightsteelblue', 'lightyellow', 'lime', 'limegreen', 'linen',
-  'magenta', 'maroon', 'mediumaquamarine', 'mediumblue', 'mediumorchid',
-  'mediumpurple', 'mediumseagreen', 'mediumslateblue', 'mediumspringgreen', 'mediumturquoise',
-  'mediumvioletred', 'midnightblue', 'mintcream', 'mistyrose', 'moccasin',
-  'navajowhite', 'navy', 'oldlace', 'olive', 'olivedrab',
-  'orange', 'orangered', 'orchid', 'palegoldenrod', 'palegreen',
-  'paleturquoise', 'palevioletred', 'papayawhip', 'peachpuff', 'peru',
-  'pink', 'plum', 'powderblue', 'purple', 'rebeccapurple',
-  'red', 'rosybrown', 'royalblue', 'saddlebrown', 'salmon',
-  'sandybrown', 'seagreen', 'seashell', 'sienna', 'silver',
-  'skyblue', 'slateblue', 'slategray', 'slategrey', 'snow',
-  'springgreen', 'steelblue', 'tan', 'teal', 'thistle',
-  'tomato', 'turquoise', 'violet', 'wheat', 'white',
-  'whitesmoke', 'yellow', 'yellowgreen'
-];
-
-const SPACING_UNITS = ['px', 'rem', 'em', '%', 'vh', 'vw', 'vmin', 'vmax', 'ch', 'ex'];
-
-const INVALID_TYPOGRAPHY_KEYS = ['key', 'white', 'font', 'color', 'colors', 'spacing', 'breakpoint', 'breakpoints', 'radius', 'shadow', 'border'];
-
-const SECTION_KEYWORDS: Record<TokenCategory, string[]> = {
-  colors: ['color', '颜色', 'palette', '配色'],
-  typography: ['typograph', '字体', '文字', '排版', 'font'],
-  spacing: ['spacing', '间距', 'space', 'padding', 'margin'],
-  radii: ['radius', '圆角', 'corner', 'border-radius'],
-  breakpoints: ['breakpoint', '断点', 'screen', '响应式', 'viewport'],
-  shadows: ['shadow', '阴影', 'box-shadow'],
-  borders: ['border', '边框'],
-  opacity: ['opacity', '透明度'],
-  zIndex: ['z-index', '层级', 'zindex'],
+const formatSchema = (schema: Schema): string => {
+  return JSON.stringify(toEditableSchema(schema), null, 2);
 };
 
-const isValidColor = (value: string): boolean => {
-  const trimmed = value.trim().toLowerCase();
-  if (CSS_COLOR_NAMES.includes(trimmed)) return true;
-  return COLOR_PATTERNS.some(pattern => pattern.test(trimmed));
-};
-
-const isLikelySpacingValue = (value: string): boolean => {
-  const trimmed = value.trim();
-  
-  if (/^\d+$/.test(trimmed)) {
-    const num = parseInt(trimmed, 10);
-    return num >= 0 && num <= 2000;
+const readResponseJson = async <T,>(response: Response): Promise<ApiResponse<T>> => {
+  try {
+    return await response.json();
+  } catch {
+    return {
+      success: false,
+      error: `服务返回了不可解析的响应，HTTP ${response.status}`,
+      errorType: 'server_error',
+    };
   }
-  
-  for (const unit of SPACING_UNITS) {
-    if (trimmed.toLowerCase().endsWith(unit.toLowerCase())) {
-      const numPart = trimmed.slice(0, -unit.length);
-      if (/^[\d.]+$/.test(numPart)) {
-        return true;
-      }
-    }
-  }
-  
-  if (/^calc\(.+\)$/i.test(trimmed)) return true;
-  if (/^min\(.+\)$/i.test(trimmed)) return true;
-  if (/^max\(.+\)$/i.test(trimmed)) return true;
-  if (/^clamp\(.+\)$/i.test(trimmed)) return true;
-  
-  return false;
-};
-
-const isLikelyTypographyValue = (value: string): boolean => {
-  const trimmed = value.trim().toLowerCase();
-  
-  if (trimmed.startsWith('#') || isValidColor(trimmed)) return false;
-  
-  const typographyPatterns = [
-    /^\d+(?:px|rem|em|pt)$/,
-    /^\d+(?:px|rem|em|pt)\s*\/\s*\d+(?:px|rem|em|pt)?$/,
-    /^(normal|bold|lighter|bolder|[1-9]00)$/,
-    /^(sans-serif|serif|monospace|cursive|fantasy)$/,
-    /^(left|center|right|justify)$/,
-    /^(uppercase|lowercase|capitalize|none)$/,
-    /^(italic|oblique|normal)$/,
-    /^['"].*['"]$/,
-    /^[A-Z][a-zA-Z\s-]+$/,
-  ];
-  
-  return typographyPatterns.some(pattern => pattern.test(trimmed));
-};
-
-const isInvalidTypographyKey = (key: string): boolean => {
-  const lowerKey = key.trim().toLowerCase();
-  return INVALID_TYPOGRAPHY_KEYS.includes(lowerKey);
-};
-
-const parseRangeValue = (value: string): string => {
-  const trimmed = value.trim();
-  
-  const rangeMatch = trimmed.match(/^(\d+(?:px|rem|em|%)?)\s*[-–—]\s*(\d+(?:px|rem|em|%)?)$/);
-  if (rangeMatch) {
-    return `${rangeMatch[1]}–${rangeMatch[2]}`;
-  }
-  
-  const multiRangeMatch = trimmed.match(/^(\d+(?:px|rem|em|%)?)\s*[-–—]\s*(\d+(?:px|rem|em|%)?)\s*[-–—]\s*(\d+(?:px|rem|em|%)?)$/);
-  if (multiRangeMatch) {
-    return `${multiRangeMatch[1]}–${multiRangeMatch[2]}–${multiRangeMatch[3]}`;
-  }
-  
-  return trimmed;
-};
-
-const parseKeyValue = (line: string): { key: string; value: string } | null => {
-  const trimmed = line.trim();
-  
-  if (trimmed.startsWith('- [ ]') || trimmed.startsWith('- [x]')) {
-    return null;
-  }
-  
-  const patterns = [
-    /^[*-]?\s*[`"]?([\w\s\-._/]+)[`"]?\s*[:：]\s*(.+)$/,
-    /^[*-]?\s*[`"]?([\w\s\-._/]+)[`"]?\s+[-–—]\s+(.+)$/,
-    /^[*-]?\s*[`"]?([\w\s\-._/]+)[`"]?\s*=\s*(.+)$/,
-  ];
-  
-  for (const pattern of patterns) {
-    const match = trimmed.match(pattern);
-    if (match) {
-      let key = match[1].trim();
-      let value = match[2].trim();
-      
-      value = value.replace(/^[`"\s]+|[`"\s,.;]+$/g, '');
-      key = key.replace(/^[`"\s]+|[`"\s]+$/g, '');
-      
-      value = parseRangeValue(value);
-      
-      if (key && value) {
-        return { key, value };
-      }
-    }
-  }
-  
-  return null;
-};
-
-const parseTableRows = (lines: string[], startIndex: number): { rows: string[][]; endIndex: number } => {
-  const rows: string[][] = [];
-  let i = startIndex;
-  
-  while (i < lines.length) {
-    const line = lines[i].trim();
-    
-    if (line.startsWith('|') && line.endsWith('|')) {
-      const cells = line.slice(1, -1).split('|').map(cell => cell.trim());
-      if (cells.length > 0) {
-        const isSeparatorRow = cells.every(cell => /^[-:]+$/.test(cell));
-        if (!isSeparatorRow) {
-          rows.push(cells);
-        }
-      }
-      i++;
-    } else if (line === '') {
-      i++;
-    } else {
-      break;
-    }
-  }
-  
-  return { rows, endIndex: i };
-};
-
-const guessCategoryFromKey = (key: string): TokenCategory | null => {
-  const lowerKey = key.toLowerCase();
-  
-  if (lowerKey.includes('color') || isValidColor(lowerKey)) return 'colors';
-  if (lowerKey.includes('font') || lowerKey.includes('typograph') || lowerKey.includes('text')) return 'typography';
-  if (lowerKey.includes('space') || lowerKey.includes('spacing') || lowerKey.includes('padding') || lowerKey.includes('margin')) return 'spacing';
-  if (lowerKey.includes('radius') || lowerKey.includes('rounded') || lowerKey.includes('corner')) return 'radii';
-  if (lowerKey.includes('breakpoint') || lowerKey.includes('screen') || lowerKey.includes('viewport')) return 'breakpoints';
-  if (lowerKey.includes('shadow')) return 'shadows';
-  if (lowerKey.includes('border') && !lowerKey.includes('radius')) return 'borders';
-  if (lowerKey.includes('opacity')) return 'opacity';
-  if (lowerKey.includes('z-index') || lowerKey.includes('zindex') || lowerKey.includes('layer')) return 'zIndex';
-  
-  return null;
-};
-
-const classifyValue = (key: string, value: string): TokenCategory | null => {
-  const fromKey = guessCategoryFromKey(key);
-  if (fromKey) return fromKey;
-  
-  if (isValidColor(value)) return 'colors';
-  if (isLikelyTypographyValue(value)) return 'typography';
-  if (isLikelySpacingValue(value)) return 'spacing';
-  
-  return null;
-};
-
-const parseDocumentToSchema = (doc: Document): { meta: Partial<SchemaMeta>; tokens: Partial<SchemaTokens>; unresolved: string[] } => {
-  const markdown = doc.raw_markdown;
-  const lines = markdown.split('\n');
-  
-  const meta: Partial<SchemaMeta> = {
-    name: doc.title,
-    description: '',
-    keywords: [],
-  };
-  
-  const tokens: Partial<SchemaTokens> = {
-    colors: {},
-    typography: {},
-    spacing: {},
-    radii: {},
-    breakpoints: {},
-    shadows: {},
-    borders: {},
-    opacity: {},
-    zIndex: {},
-  };
-  
-  const unresolved: string[] = [];
-  
-  const frontmatterMatch = markdown.match(/^---\n([\s\S]*?)\n---/);
-  if (frontmatterMatch) {
-    const frontmatter = frontmatterMatch[1];
-    const fmLines = frontmatter.split('\n');
-    
-    for (const line of fmLines) {
-      const kv = parseKeyValue(line);
-      if (kv) {
-        const lowerKey = kv.key.toLowerCase();
-        if (lowerKey === 'title' || lowerKey === 'name') {
-          meta.name = kv.value;
-        } else if (lowerKey === 'description' || lowerKey === 'desc') {
-          meta.description = kv.value;
-        } else if (lowerKey === 'keywords' || lowerKey === 'tags') {
-          meta.keywords = kv.value.split(/[,\s]+/).filter(k => k.trim());
-        }
-      }
-    }
-  }
-  
-  let currentCategory: TokenCategory | 'none' = 'none';
-  let sectionDepth = 0;
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-    
-    if (trimmed.startsWith('- [ ]') || trimmed.startsWith('- [x]')) {
-      unresolved.push(trimmed.replace(/^- \[[ x]\]\s*/, ''));
-      continue;
-    }
-    
-    const headerMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
-    if (headerMatch) {
-      const headerLevel = headerMatch[1].length;
-      const headerText = headerMatch[2].toLowerCase();
-      
-      if (headerLevel <= sectionDepth) {
-        currentCategory = 'none';
-      }
-      
-      sectionDepth = headerLevel;
-      
-      let foundCategory = false;
-      for (const [category, keywords] of Object.entries(SECTION_KEYWORDS)) {
-        if (keywords.some(kw => headerText.includes(kw))) {
-          currentCategory = category as TokenCategory;
-          foundCategory = true;
-          break;
-        }
-      }
-      
-      if (!foundCategory) {
-        currentCategory = 'none';
-      }
-      
-      continue;
-    }
-    
-    const boldSectionMatch = trimmed.match(/^\*\*([^*]+)\*\*[:：]?\s*$/);
-    if (boldSectionMatch) {
-      const sectionText = boldSectionMatch[1].toLowerCase();
-      
-      let foundCategory = false;
-      for (const [category, keywords] of Object.entries(SECTION_KEYWORDS)) {
-        if (keywords.some(kw => sectionText.includes(kw))) {
-          currentCategory = category as TokenCategory;
-          foundCategory = true;
-          break;
-        }
-      }
-      
-      if (!foundCategory) {
-        currentCategory = 'none';
-      }
-      
-      continue;
-    }
-    
-    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
-      const { rows, endIndex } = parseTableRows(lines, i);
-      i = endIndex - 1;
-      
-      if (rows.length >= 2) {
-        const headers = rows[0];
-        const dataRows = rows.slice(1);
-        
-        let keyColumnIndex = -1;
-        let valueColumnIndex = -1;
-        
-        for (let j = 0; j < headers.length; j++) {
-          const header = headers[j].toLowerCase();
-          if (header.includes('name') || header.includes('key') || header.includes('token') || header.includes('属性') || header.includes('名称')) {
-            keyColumnIndex = j;
-          } else if (header.includes('value') || header.includes('color') || header.includes('值') || header.includes('描述')) {
-            valueColumnIndex = j;
-          }
-        }
-        
-        if (keyColumnIndex === -1 && headers.length >= 2) {
-          keyColumnIndex = 0;
-          valueColumnIndex = 1;
-        }
-        
-        if (keyColumnIndex !== -1 && valueColumnIndex !== -1) {
-          for (const row of dataRows) {
-            if (row[keyColumnIndex] && row[valueColumnIndex]) {
-              const key = row[keyColumnIndex].trim();
-              let value = row[valueColumnIndex].trim();
-              
-              value = parseRangeValue(value);
-              
-              if (key && value) {
-                let targetCategory: TokenCategory | null = null;
-                
-                if (currentCategory !== 'none') {
-                  targetCategory = currentCategory;
-                } else {
-                  targetCategory = classifyValue(key, value);
-                }
-                
-                if (targetCategory && tokens[targetCategory]) {
-                  if (targetCategory === 'colors' && !isValidColor(value)) {
-                    continue;
-                  }
-                  if (targetCategory === 'typography' && isInvalidTypographyKey(key)) {
-                    continue;
-                  }
-                  if (targetCategory === 'typography' && !isLikelyTypographyValue(value) && !isValidColor(value)) {
-                    continue;
-                  }
-                  
-                  tokens[targetCategory]![key] = value;
-                }
-              }
-            }
-          }
-        }
-      }
-      
-      continue;
-    }
-    
-    if (currentCategory === 'none') {
-      if (!meta.description && trimmed.length > 20 && !trimmed.startsWith('#') && !trimmed.startsWith('---') && !trimmed.startsWith('|')) {
-        let descLines: string[] = [];
-        let j = i;
-        while (j < lines.length && !lines[j].trim().startsWith('#') && !lines[j].trim().startsWith('---') && !lines[j].trim().startsWith('|')) {
-          const lineText = lines[j].trim();
-          if (lineText) {
-            descLines.push(lineText);
-          }
-          if (descLines.length >= 3) break;
-          j++;
-        }
-        meta.description = descLines.join(' ').substring(0, 200);
-      }
-      continue;
-    }
-    
-    const kv = parseKeyValue(trimmed);
-    if (kv && currentCategory !== 'none' && tokens[currentCategory]) {
-      const { key, value } = kv;
-      
-      if (currentCategory === 'colors' && !isValidColor(value)) {
-        continue;
-      }
-      if (currentCategory === 'typography' && isInvalidTypographyKey(key)) {
-        continue;
-      }
-      
-      tokens[currentCategory]![key] = value;
-    }
-  }
-  
-  return {
-    meta,
-    tokens,
-    unresolved,
-  };
 };
 
 export default function SchemaPage() {
-  const router = useRouter();
   const params = useParams();
-  const documentId = parseInt(params.id as string, 10);
-  
+  const documentId = useMemo(() => Number.parseInt(params.id as string, 10), [params.id]);
+
   const [schema, setSchema] = useState<Schema | null>(null);
   const [document, setDocument] = useState<Document | null>(null);
+  const [editorValue, setEditorValue] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errors, setErrors] = useState<string[]>([]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const fetchData = async () => {
-    if (isNaN(documentId)) {
-      setError('无效的文档 ID');
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      const docResponse = await fetch(`/api/documents/${documentId}`);
-      const docData: ApiResponse<Document> = await docResponse.json();
-
-      if (!docResponse.ok || !docData.success || !docData.data) {
-        setError(docData.error || '获取文档失败');
+  useEffect(() => {
+    const fetchData = async () => {
+      if (Number.isNaN(documentId)) {
+        setErrors(['无效的文档 ID']);
         setIsLoading(false);
         return;
       }
 
-      setDocument(docData.data);
+      setIsLoading(true);
+      setErrors([]);
+      setSuccessMessage(null);
 
-      const schemaResponse = await fetch(`/api/documents/${documentId}/schema`);
-      const schemaData: ApiResponse<Schema> = await schemaResponse.json();
+      try {
+        const documentResponse = await fetch(`/api/documents/${documentId}`);
+        const documentData = await readResponseJson<Document>(documentResponse);
 
-      if (schemaResponse.ok && schemaData.success && schemaData.data) {
+        if (!documentResponse.ok || !documentData.success || !documentData.data) {
+          setErrors([documentData.error || '获取文档失败']);
+          setIsLoading(false);
+          return;
+        }
+
+        const schemaResponse = await fetch(`/api/documents/${documentId}/schema`);
+        const schemaData = await readResponseJson<Schema>(schemaResponse);
+
+        if (!schemaResponse.ok || !schemaData.success || !schemaData.data) {
+          setErrors([
+            schemaData.error || '获取 Schema 失败',
+            ...(schemaData.details || []),
+          ]);
+          setIsLoading(false);
+          return;
+        }
+
+        setDocument(documentData.data);
         setSchema(schemaData.data);
-        setError(null);
-      } else {
-        setError(schemaData.error || '获取 Schema 失败');
+        setEditorValue(formatSchema(schemaData.data));
+      } catch {
+        setErrors(['获取数据失败，请检查服务是否可用后重试']);
+      } finally {
+        setIsLoading(false);
       }
+    };
 
-      setIsLoading(false);
-    } catch (err) {
-      console.error('Error fetching data:', err);
-      setError('获取数据失败，请稍后重试');
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
     fetchData();
   }, [documentId]);
 
-  const handleSync = async () => {
-    if (!document) return;
-    
-    setIsSyncing(true);
-    setError(null);
+  const handleSave = async () => {
+    setErrors([]);
     setSuccessMessage(null);
 
+    let parsed: unknown;
     try {
-      const parsedSchema = parseDocumentToSchema(document);
-      
+      parsed = JSON.parse(editorValue);
+    } catch (error) {
+      setErrors([
+        error instanceof Error
+          ? `JSON 格式错误：${error.message}`
+          : 'JSON 格式错误，无法解析',
+      ]);
+      return;
+    }
+
+    const validation = validateSchemaContent(parsed);
+    if (!validation.ok) {
+      setErrors(validation.errors);
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
       const response = await fetch(`/api/documents/${documentId}/schema`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          meta: { ...schema?.meta, ...parsedSchema.meta },
-          tokens: {
-            colors: { ...schema?.tokens.colors, ...parsedSchema.tokens.colors },
-            typography: { ...schema?.tokens.typography, ...parsedSchema.tokens.typography },
-            spacing: { ...schema?.tokens.spacing, ...parsedSchema.tokens.spacing },
-            radii: { ...schema?.tokens.radii, ...parsedSchema.tokens.radii },
-            breakpoints: { ...schema?.tokens.breakpoints, ...parsedSchema.tokens.breakpoints },
-            shadows: { ...schema?.tokens.shadows, ...parsedSchema.tokens.shadows },
-            borders: { ...schema?.tokens.borders, ...parsedSchema.tokens.borders },
-            opacity: { ...schema?.tokens.opacity, ...parsedSchema.tokens.opacity },
-            zIndex: { ...schema?.tokens.zIndex, ...parsedSchema.tokens.zIndex },
-          },
-          unresolved: parsedSchema.unresolved && parsedSchema.unresolved.length > 0 
-            ? parsedSchema.unresolved 
-            : schema?.unresolved,
-        }),
+        body: JSON.stringify(validation.value),
       });
 
-      const data: ApiResponse<Schema> = await response.json();
+      const data = await readResponseJson<Schema>(response);
 
       if (!response.ok || !data.success || !data.data) {
-        setError(data.error || '同步失败');
-        setIsSyncing(false);
+        setErrors([
+          data.error || `保存失败，HTTP ${response.status}`,
+          ...(data.details || []),
+        ]);
         return;
       }
 
       setSchema(data.data);
-      setSuccessMessage('同步成功！Schema 已从文档更新。');
-      setIsSyncing(false);
-    } catch (err) {
-      console.error('Error syncing schema:', err);
-      setError('同步失败，请稍后重试');
-      setIsSyncing(false);
+      setEditorValue(formatSchema(data.data));
+      setSuccessMessage('Schema 已保存');
+    } catch {
+      setErrors(['保存失败，请检查网络或服务状态后重试']);
+    } finally {
+      setIsSaving(false);
     }
   };
 
   if (isLoading) {
     return (
       <div className="max-w-5xl mx-auto">
-        <div className="text-center py-16">
-          <p className="text-gray-600 dark:text-gray-400">加载中...</p>
+        <div className="text-center py-16 text-gray-600 dark:text-gray-400">
+          加载中...
         </div>
       </div>
     );
   }
 
-  if (error && isNaN(documentId)) {
+  if (!schema || !document) {
     return (
       <div className="max-w-5xl mx-auto">
-        <div className="text-center py-16">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-            文档不存在
+            Schema 加载失败
           </h1>
+          {errors.length > 0 && (
+            <ul className="space-y-2 mb-6 text-red-700 dark:text-red-300">
+              {errors.map((error, index) => (
+                <li key={`${error}-${index}`}>{error}</li>
+              ))}
+            </ul>
+          )}
           <Link
             href="/documents"
-            className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300"
+            className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium"
           >
             返回文档列表
           </Link>
@@ -606,136 +175,55 @@ export default function SchemaPage() {
     );
   }
 
-  if (!schema) {
-    return (
-      <div className="max-w-5xl mx-auto">
-        <div className="text-center py-16">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-            Schema 加载失败
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">{error}</p>
-          <Link
-            href={`/documents/${documentId}`}
-            className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300"
-          >
-            返回文档详情
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  const allTokenCategories: { key: TokenCategory; label: string }[] = [
-    { key: 'colors', label: '颜色 (colors)' },
-    { key: 'typography', label: '排版 (typography)' },
-    { key: 'spacing', label: '间距 (spacing)' },
-    { key: 'radii', label: '圆角 (radii)' },
-    { key: 'breakpoints', label: '断点 (breakpoints)' },
-    { key: 'shadows', label: '阴影 (shadows)' },
-    { key: 'borders', label: '边框 (borders)' },
-    { key: 'opacity', label: '透明度 (opacity)' },
-    { key: 'zIndex', label: '层级 (zIndex)' },
-  ];
-
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <Link
-            href={`/documents/${documentId}`}
-            className="inline-flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-            </svg>
-            返回文档
-          </Link>
-        </div>
-        <button
-          onClick={handleSync}
-          disabled={isSyncing}
-          className="inline-flex items-center bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <Link
+          href={`/documents/${documentId}`}
+          className="inline-flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
           </svg>
-          {isSyncing ? '同步中...' : '从文档同步'}
+          返回文档
+        </Link>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={isSaving}
+          className="inline-flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isSaving ? '保存中...' : '保存 Schema'}
         </button>
       </div>
 
-      {error && (
+      {errors.length > 0 && (
         <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <p className="text-red-600 dark:text-red-400">{error}</p>
+          <p className="font-medium text-red-700 dark:text-red-300 mb-2">保存前请处理这些问题：</p>
+          <ul className="space-y-1 text-red-700 dark:text-red-300">
+            {errors.map((error, index) => (
+              <li key={`${error}-${index}`}>{error}</li>
+            ))}
+          </ul>
         </div>
       )}
 
       {successMessage && (
-        <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-          <p className="text-green-600 dark:text-green-400">{successMessage}</p>
+        <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-green-700 dark:text-green-300">
+          {successMessage}
         </div>
       )}
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            Schema: {document?.title || schema.meta.name || '未命名'}
-          </h1>
-          <div className="text-sm text-gray-500 dark:text-gray-400">
-            更新于: {new Date(schema.updated_at).toLocaleString('zh-CN')}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">
-          <div className="flex items-center">
-            <span className="mr-2 font-medium">文档 ID:</span>
-            <span>{schema.document_id}</span>
-          </div>
-          <div className="flex items-center">
-            <span className="mr-2 font-medium">Schema ID:</span>
-            <span>{schema.id}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="bg-gray-50 dark:bg-gray-700 px-6 py-3 border-b border-gray-200 dark:border-gray-600">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Meta 信息
-          </h2>
-        </div>
-        <div className="p-6 space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              名称 (name)
-            </label>
-            <div className="px-4 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200">
-              {schema.meta.name || '<空>'}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              描述 (description)
-            </label>
-            <div className="px-4 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 min-h-[60px]">
-              {schema.meta.description || '<空>'}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              关键词 (keywords)
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {schema.meta.keywords && schema.meta.keywords.length > 0 ? (
-                schema.meta.keywords.map((keyword, index) => (
-                  <span
-                    key={index}
-                    className="px-3 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full text-sm"
-                  >
-                    {keyword}
-                  </span>
-                ))
-              ) : (
-                <span className="text-gray-500 dark:text-gray-400 italic">无关键词</span>
-              )}
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+              Schema: {document.title}
+            </h1>
+            <div className="mt-3 flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">
+              <span>文档 ID: {schema.document_id}</span>
+              <span>Schema ID: {schema.id}</span>
+              <span>更新于: {new Date(schema.updated_at).toLocaleString('zh-CN')}</span>
             </div>
           </div>
         </div>
@@ -744,95 +232,24 @@ export default function SchemaPage() {
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="bg-gray-50 dark:bg-gray-700 px-6 py-3 border-b border-gray-200 dark:border-gray-600">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Tokens
-          </h2>
-        </div>
-        
-        <div className="divide-y divide-gray-200 dark:divide-gray-700">
-          {allTokenCategories.map(({ key: category, label }) => {
-            const data = schema.tokens[category];
-            const hasData = data && Object.keys(data).length > 0;
-            
-            return (
-              <div key={category} className="p-6">
-                <h3 className="text-md font-medium text-gray-900 dark:text-white mb-4">
-                  {label}
-                </h3>
-                {hasData ? (
-                  <div className={category === 'colors' 
-                    ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
-                    : 'space-y-2'
-                  }>
-                    {Object.entries(data!).map(([k, v], index) => (
-                      category === 'colors' ? (
-                        <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                          <div
-                            className="w-8 h-8 rounded-md border border-gray-300 dark:border-gray-600 flex-shrink-0"
-                            style={{ backgroundColor: v }}
-                          />
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{k}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{v}</p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                          <span className="text-sm font-medium text-gray-900 dark:text-white">{k}</span>
-                          <span className="text-sm text-gray-600 dark:text-gray-400 font-mono">{v}</span>
-                        </div>
-                      )
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500 dark:text-gray-400 italic">无数据</p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="bg-gray-50 dark:bg-gray-700 px-6 py-3 border-b border-gray-200 dark:border-gray-600">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            未解析项 (unresolved)
+            Schema v0
           </h2>
         </div>
         <div className="p-6">
-          {schema.unresolved && schema.unresolved.length > 0 ? (
-            <ul className="space-y-2">
-              {schema.unresolved.map((item, index) => (
-                <li
-                  key={index}
-                  className="flex items-start p-3 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-yellow-500 mr-3 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                  <span className="text-gray-700 dark:text-gray-300">{item}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-gray-500 dark:text-gray-400 italic">无未解析项</p>
-          )}
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="bg-gray-50 dark:bg-gray-700 px-6 py-3 border-b border-gray-200 dark:border-gray-600">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            原始 JSON 数据
-          </h2>
-        </div>
-        <div className="p-6">
-          <pre className="whitespace-pre-wrap break-words text-sm text-gray-800 dark:text-gray-200 font-mono leading-relaxed bg-gray-50 dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-700 overflow-x-auto">
-            {JSON.stringify({
-              meta: schema.meta,
-              tokens: schema.tokens,
-              unresolved: schema.unresolved,
-            }, null, 2)}
-          </pre>
+          <label htmlFor="schema-editor" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            JSON 内容
+          </label>
+          <textarea
+            id="schema-editor"
+            value={editorValue}
+            onChange={(event) => {
+              setEditorValue(event.target.value);
+              if (errors.length > 0) setErrors([]);
+              if (successMessage) setSuccessMessage(null);
+            }}
+            spellCheck={false}
+            className="w-full min-h-[520px] resize-y rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-4 py-3 font-mono text-sm leading-6 text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500"
+          />
         </div>
       </div>
     </div>

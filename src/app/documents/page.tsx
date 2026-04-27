@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { documentModel } from '@/lib/models/document';
 import DeleteDocumentButton from '@/components/DeleteDocumentButton';
+import type { Document } from '@/lib/types';
 
 export default async function DocumentsPage() {
-  let documents = [];
+  let documents: Document[] = [];
   let totalDocuments = 0;
   
   try {
