@@ -28,52 +28,67 @@ const initDatabase = async (): Promise<SqlJsDatabase> => {
     return db;
   }
 
-  // 加载 SQL.js
-  const SQL = await initSqlJs();
-  
-  // 检查是否存在现有的数据库文件
-  if (fs.existsSync(dbPath)) {
-    // 从文件加载现有数据库
-    const fileBuffer = fs.readFileSync(dbPath);
-    db = new SQL.Database(fileBuffer);
-    console.log('从现有文件加载数据库:', dbPath);
-  } else {
-    // 创建新数据库
-    db = new SQL.Database();
-    console.log('创建新数据库:', dbPath);
+  try {
+    // 尝试从 node_modules 加载 WASM 文件
+    const wasmPath = path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
+    
+    let SQL;
+    if (fs.existsSync(wasmPath)) {
+      // 如果 WASM 文件存在，使用它
+      const wasmBinary = fs.readFileSync(wasmPath);
+      SQL = await initSqlJs({ wasmBinary });
+    } else {
+      // 否则，让 sql.js 尝试自动加载
+      SQL = await initSqlJs();
+    }
+    
+    // 检查是否存在现有的数据库文件
+    if (fs.existsSync(dbPath)) {
+      // 从文件加载现有数据库
+      const fileBuffer = fs.readFileSync(dbPath);
+      db = new SQL.Database(fileBuffer);
+      console.log('从现有文件加载数据库:', dbPath);
+    } else {
+      // 创建新数据库
+      db = new SQL.Database();
+      console.log('创建新数据库:', dbPath);
+    }
+
+    // 创建文档表（如果不存在）
+    const createDocumentsTable = `
+      CREATE TABLE IF NOT EXISTS documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        raw_markdown TEXT NOT NULL,
+        status TEXT DEFAULT 'draft' NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+      );
+    `;
+
+    db.run(createDocumentsTable);
+
+    // 为 created_at 和 updated_at 创建索引
+    const createIndexes = `
+      CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at);
+      CREATE INDEX IF NOT EXISTS idx_documents_updated_at ON documents(updated_at);
+      CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
+    `;
+
+    db.run(createIndexes);
+    
+    // 保存数据库
+    saveDatabase();
+    
+    isInitialized = true;
+    console.log('数据库初始化完成');
+    
+    return db;
+  } catch (error) {
+    console.error('数据库初始化失败:', error);
+    throw error;
   }
-
-  // 创建文档表（如果不存在）
-  const createDocumentsTable = `
-    CREATE TABLE IF NOT EXISTS documents (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      source_type TEXT NOT NULL,
-      raw_markdown TEXT NOT NULL,
-      status TEXT DEFAULT 'draft' NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
-    );
-  `;
-
-  db.run(createDocumentsTable);
-
-  // 为 created_at 和 updated_at 创建索引
-  const createIndexes = `
-    CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at);
-    CREATE INDEX IF NOT EXISTS idx_documents_updated_at ON documents(updated_at);
-    CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
-  `;
-
-  db.run(createIndexes);
-  
-  // 保存数据库
-  saveDatabase();
-  
-  isInitialized = true;
-  console.log('数据库初始化完成');
-  
-  return db;
 };
 
 // 获取数据库实例

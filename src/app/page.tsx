@@ -113,7 +113,7 @@ export default async function Home() {
                 {doc.title}
               </h4>
               <div className="flex flex-wrap gap-2 mb-3">
-                <span className={`inline-block px-2 py-1 text-xs font-medium rounded bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
+                <span className={`inline-block px-2 py-1 text-xs font-medium rounded bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200`}>
                   {doc.source_type === 'file' ? '文件导入' : '粘贴内容'}
                 </span>
                 <span className={`inline-block px-2 py-1 text-xs font-medium rounded ${
