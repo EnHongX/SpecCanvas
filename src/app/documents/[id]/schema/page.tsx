@@ -14,6 +14,12 @@ interface SchemaTokens {
   colors: Record<string, string>;
   typography: Record<string, string>;
   spacing: Record<string, string>;
+  radii: Record<string, string>;
+  breakpoints: Record<string, string>;
+  shadows: Record<string, string>;
+  borders: Record<string, string>;
+  opacity: Record<string, string>;
+  zIndex: Record<string, string>;
 }
 
 interface Schema {
@@ -42,6 +48,8 @@ interface ApiResponse<T> {
   error?: string;
   errorType?: string;
 }
+
+type TokenCategory = keyof SchemaTokens;
 
 const COLOR_PATTERNS = [
   /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/,
@@ -87,7 +95,19 @@ const CSS_COLOR_NAMES = [
 
 const SPACING_UNITS = ['px', 'rem', 'em', '%', 'vh', 'vw', 'vmin', 'vmax', 'ch', 'ex'];
 
-const INVALID_TYPOGRAPHY_KEYS = ['key', 'white', 'font', 'color', 'colors', 'spacing', 'breakpoint', 'breakpoints'];
+const INVALID_TYPOGRAPHY_KEYS = ['key', 'white', 'font', 'color', 'colors', 'spacing', 'breakpoint', 'breakpoints', 'radius', 'shadow', 'border'];
+
+const SECTION_KEYWORDS: Record<TokenCategory, string[]> = {
+  colors: ['color', '颜色', 'palette', '配色'],
+  typography: ['typograph', '字体', '文字', '排版', 'font'],
+  spacing: ['spacing', '间距', 'space', 'padding', 'margin'],
+  radii: ['radius', '圆角', 'corner', 'border-radius'],
+  breakpoints: ['breakpoint', '断点', 'screen', '响应式', 'viewport'],
+  shadows: ['shadow', '阴影', 'box-shadow'],
+  borders: ['border', '边框'],
+  opacity: ['opacity', '透明度'],
+  zIndex: ['z-index', '层级', 'zindex'],
+};
 
 const isValidColor = (value: string): boolean => {
   const trimmed = value.trim().toLowerCase();
@@ -100,7 +120,7 @@ const isLikelySpacingValue = (value: string): boolean => {
   
   if (/^\d+$/.test(trimmed)) {
     const num = parseInt(trimmed, 10);
-    return num >= 0 && num <= 500;
+    return num >= 0 && num <= 2000;
   }
   
   for (const unit of SPACING_UNITS) {
@@ -124,11 +144,10 @@ const isLikelyTypographyValue = (value: string): boolean => {
   const trimmed = value.trim().toLowerCase();
   
   if (trimmed.startsWith('#') || isValidColor(trimmed)) return false;
-  if (isLikelySpacingValue(trimmed)) return false;
   
   const typographyPatterns = [
     /^\d+(?:px|rem|em|pt)$/,
-    /^\d+(?:px|rem|em|pt)\s+\/\s*\d+(?:px|rem|em|pt)?$/,
+    /^\d+(?:px|rem|em|pt)\s*\/\s*\d+(?:px|rem|em|pt)?$/,
     /^(normal|bold|lighter|bolder|[1-9]00)$/,
     /^(sans-serif|serif|monospace|cursive|fantasy)$/,
     /^(left|center|right|justify)$/,
@@ -195,6 +214,59 @@ const parseKeyValue = (line: string): { key: string; value: string } | null => {
   return null;
 };
 
+const parseTableRows = (lines: string[], startIndex: number): { rows: string[][]; endIndex: number } => {
+  const rows: string[][] = [];
+  let i = startIndex;
+  
+  while (i < lines.length) {
+    const line = lines[i].trim();
+    
+    if (line.startsWith('|') && line.endsWith('|')) {
+      const cells = line.slice(1, -1).split('|').map(cell => cell.trim());
+      if (cells.length > 0) {
+        const isSeparatorRow = cells.every(cell => /^[-:]+$/.test(cell));
+        if (!isSeparatorRow) {
+          rows.push(cells);
+        }
+      }
+      i++;
+    } else if (line === '') {
+      i++;
+    } else {
+      break;
+    }
+  }
+  
+  return { rows, endIndex: i };
+};
+
+const guessCategoryFromKey = (key: string): TokenCategory | null => {
+  const lowerKey = key.toLowerCase();
+  
+  if (lowerKey.includes('color') || isValidColor(lowerKey)) return 'colors';
+  if (lowerKey.includes('font') || lowerKey.includes('typograph') || lowerKey.includes('text')) return 'typography';
+  if (lowerKey.includes('space') || lowerKey.includes('spacing') || lowerKey.includes('padding') || lowerKey.includes('margin')) return 'spacing';
+  if (lowerKey.includes('radius') || lowerKey.includes('rounded') || lowerKey.includes('corner')) return 'radii';
+  if (lowerKey.includes('breakpoint') || lowerKey.includes('screen') || lowerKey.includes('viewport')) return 'breakpoints';
+  if (lowerKey.includes('shadow')) return 'shadows';
+  if (lowerKey.includes('border') && !lowerKey.includes('radius')) return 'borders';
+  if (lowerKey.includes('opacity')) return 'opacity';
+  if (lowerKey.includes('z-index') || lowerKey.includes('zindex') || lowerKey.includes('layer')) return 'zIndex';
+  
+  return null;
+};
+
+const classifyValue = (key: string, value: string): TokenCategory | null => {
+  const fromKey = guessCategoryFromKey(key);
+  if (fromKey) return fromKey;
+  
+  if (isValidColor(value)) return 'colors';
+  if (isLikelyTypographyValue(value)) return 'typography';
+  if (isLikelySpacingValue(value)) return 'spacing';
+  
+  return null;
+};
+
 const parseDocumentToSchema = (doc: Document): { meta: Partial<SchemaMeta>; tokens: Partial<SchemaTokens>; unresolved: string[] } => {
   const markdown = doc.raw_markdown;
   const lines = markdown.split('\n');
@@ -209,6 +281,12 @@ const parseDocumentToSchema = (doc: Document): { meta: Partial<SchemaMeta>; toke
     colors: {},
     typography: {},
     spacing: {},
+    radii: {},
+    breakpoints: {},
+    shadows: {},
+    borders: {},
+    opacity: {},
+    zIndex: {},
   };
   
   const unresolved: string[] = [];
@@ -233,7 +311,7 @@ const parseDocumentToSchema = (doc: Document): { meta: Partial<SchemaMeta>; toke
     }
   }
   
-  let currentSection: 'colors' | 'typography' | 'spacing' | 'none' = 'none';
+  let currentCategory: TokenCategory | 'none' = 'none';
   let sectionDepth = 0;
   
   for (let i = 0; i < lines.length; i++) {
@@ -251,17 +329,22 @@ const parseDocumentToSchema = (doc: Document): { meta: Partial<SchemaMeta>; toke
       const headerText = headerMatch[2].toLowerCase();
       
       if (headerLevel <= sectionDepth) {
-        currentSection = 'none';
+        currentCategory = 'none';
       }
       
       sectionDepth = headerLevel;
       
-      if (headerText.includes('color') || headerText.includes('颜色')) {
-        currentSection = 'colors';
-      } else if (headerText.includes('typograph') || headerText.includes('字体') || headerText.includes('文字') || headerText.includes('排版')) {
-        currentSection = 'typography';
-      } else if (headerText.includes('spacing') || headerText.includes('间距') || headerText.includes('space') || headerText.includes('breakpoint')) {
-        currentSection = 'spacing';
+      let foundCategory = false;
+      for (const [category, keywords] of Object.entries(SECTION_KEYWORDS)) {
+        if (keywords.some(kw => headerText.includes(kw))) {
+          currentCategory = category as TokenCategory;
+          foundCategory = true;
+          break;
+        }
+      }
+      
+      if (!foundCategory) {
+        currentCategory = 'none';
       }
       
       continue;
@@ -271,22 +354,91 @@ const parseDocumentToSchema = (doc: Document): { meta: Partial<SchemaMeta>; toke
     if (boldSectionMatch) {
       const sectionText = boldSectionMatch[1].toLowerCase();
       
-      if (sectionText.includes('color') || sectionText.includes('颜色')) {
-        currentSection = 'colors';
-      } else if (sectionText.includes('typograph') || sectionText.includes('字体') || sectionText.includes('文字') || sectionText.includes('排版')) {
-        currentSection = 'typography';
-      } else if (sectionText.includes('spacing') || sectionText.includes('间距') || sectionText.includes('space') || sectionText.includes('breakpoint')) {
-        currentSection = 'spacing';
+      let foundCategory = false;
+      for (const [category, keywords] of Object.entries(SECTION_KEYWORDS)) {
+        if (keywords.some(kw => sectionText.includes(kw))) {
+          currentCategory = category as TokenCategory;
+          foundCategory = true;
+          break;
+        }
+      }
+      
+      if (!foundCategory) {
+        currentCategory = 'none';
       }
       
       continue;
     }
     
-    if (currentSection === 'none') {
-      if (!meta.description && trimmed.length > 20 && !trimmed.startsWith('#') && !trimmed.startsWith('---')) {
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      const { rows, endIndex } = parseTableRows(lines, i);
+      i = endIndex - 1;
+      
+      if (rows.length >= 2) {
+        const headers = rows[0];
+        const dataRows = rows.slice(1);
+        
+        let keyColumnIndex = -1;
+        let valueColumnIndex = -1;
+        
+        for (let j = 0; j < headers.length; j++) {
+          const header = headers[j].toLowerCase();
+          if (header.includes('name') || header.includes('key') || header.includes('token') || header.includes('属性') || header.includes('名称')) {
+            keyColumnIndex = j;
+          } else if (header.includes('value') || header.includes('color') || header.includes('值') || header.includes('描述')) {
+            valueColumnIndex = j;
+          }
+        }
+        
+        if (keyColumnIndex === -1 && headers.length >= 2) {
+          keyColumnIndex = 0;
+          valueColumnIndex = 1;
+        }
+        
+        if (keyColumnIndex !== -1 && valueColumnIndex !== -1) {
+          for (const row of dataRows) {
+            if (row[keyColumnIndex] && row[valueColumnIndex]) {
+              const key = row[keyColumnIndex].trim();
+              let value = row[valueColumnIndex].trim();
+              
+              value = parseRangeValue(value);
+              
+              if (key && value) {
+                let targetCategory: TokenCategory | null = null;
+                
+                if (currentCategory !== 'none') {
+                  targetCategory = currentCategory;
+                } else {
+                  targetCategory = classifyValue(key, value);
+                }
+                
+                if (targetCategory && tokens[targetCategory]) {
+                  if (targetCategory === 'colors' && !isValidColor(value)) {
+                    continue;
+                  }
+                  if (targetCategory === 'typography' && isInvalidTypographyKey(key)) {
+                    continue;
+                  }
+                  if (targetCategory === 'typography' && !isLikelyTypographyValue(value) && !isValidColor(value)) {
+                    continue;
+                  }
+                  
+                  tokens[targetCategory]![key] = value;
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      continue;
+    }
+    
+    if (currentCategory === 'none') {
+      if (!meta.description && trimmed.length > 20 && !trimmed.startsWith('#') && !trimmed.startsWith('---') && !trimmed.startsWith('|')) {
         let descLines: string[] = [];
         let j = i;
-        while (j < lines.length && !lines[j].trim().startsWith('#') && !lines[j].trim().startsWith('---')) {
+        while (j < lines.length && !lines[j].trim().startsWith('#') && !lines[j].trim().startsWith('---') && !lines[j].trim().startsWith('|')) {
           const lineText = lines[j].trim();
           if (lineText) {
             descLines.push(lineText);
@@ -300,22 +452,17 @@ const parseDocumentToSchema = (doc: Document): { meta: Partial<SchemaMeta>; toke
     }
     
     const kv = parseKeyValue(trimmed);
-    if (kv) {
+    if (kv && currentCategory !== 'none' && tokens[currentCategory]) {
       const { key, value } = kv;
       
-      if (currentSection === 'colors') {
-        if (isValidColor(value)) {
-          tokens.colors![key] = value;
-        }
-      } else if (currentSection === 'typography') {
-        if (!isInvalidTypographyKey(key) && isLikelyTypographyValue(value)) {
-          tokens.typography![key] = value;
-        }
-      } else if (currentSection === 'spacing') {
-        if (isLikelySpacingValue(value)) {
-          tokens.spacing![key] = value;
-        }
+      if (currentCategory === 'colors' && !isValidColor(value)) {
+        continue;
       }
+      if (currentCategory === 'typography' && isInvalidTypographyKey(key)) {
+        continue;
+      }
+      
+      tokens[currentCategory]![key] = value;
     }
   }
   
@@ -362,6 +509,7 @@ export default function SchemaPage() {
 
       if (schemaResponse.ok && schemaData.success && schemaData.data) {
         setSchema(schemaData.data);
+        setError(null);
       } else {
         setError(schemaData.error || '获取 Schema 失败');
       }
@@ -399,6 +547,12 @@ export default function SchemaPage() {
             colors: { ...schema?.tokens.colors, ...parsedSchema.tokens.colors },
             typography: { ...schema?.tokens.typography, ...parsedSchema.tokens.typography },
             spacing: { ...schema?.tokens.spacing, ...parsedSchema.tokens.spacing },
+            radii: { ...schema?.tokens.radii, ...parsedSchema.tokens.radii },
+            breakpoints: { ...schema?.tokens.breakpoints, ...parsedSchema.tokens.breakpoints },
+            shadows: { ...schema?.tokens.shadows, ...parsedSchema.tokens.shadows },
+            borders: { ...schema?.tokens.borders, ...parsedSchema.tokens.borders },
+            opacity: { ...schema?.tokens.opacity, ...parsedSchema.tokens.opacity },
+            zIndex: { ...schema?.tokens.zIndex, ...parsedSchema.tokens.zIndex },
           },
           unresolved: parsedSchema.unresolved && parsedSchema.unresolved.length > 0 
             ? parsedSchema.unresolved 
@@ -470,6 +624,18 @@ export default function SchemaPage() {
       </div>
     );
   }
+
+  const allTokenCategories: { key: TokenCategory; label: string }[] = [
+    { key: 'colors', label: '颜色 (colors)' },
+    { key: 'typography', label: '排版 (typography)' },
+    { key: 'spacing', label: '间距 (spacing)' },
+    { key: 'radii', label: '圆角 (radii)' },
+    { key: 'breakpoints', label: '断点 (breakpoints)' },
+    { key: 'shadows', label: '阴影 (shadows)' },
+    { key: 'borders', label: '边框 (borders)' },
+    { key: 'opacity', label: '透明度 (opacity)' },
+    { key: 'zIndex', label: '层级 (zIndex)' },
+  ];
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -583,65 +749,46 @@ export default function SchemaPage() {
         </div>
         
         <div className="divide-y divide-gray-200 dark:divide-gray-700">
-          <div className="p-6">
-            <h3 className="text-md font-medium text-gray-900 dark:text-white mb-4">
-              颜色 (colors)
-            </h3>
-            {schema.tokens.colors && Object.keys(schema.tokens.colors).length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {Object.entries(schema.tokens.colors).map(([key, value], index) => (
-                  <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                    <div
-                      className="w-8 h-8 rounded-md border border-gray-300 dark:border-gray-600 flex-shrink-0"
-                      style={{ backgroundColor: value }}
-                    />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{key}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{value}</p>
-                    </div>
+          {allTokenCategories.map(({ key: category, label }) => {
+            const data = schema.tokens[category];
+            const hasData = data && Object.keys(data).length > 0;
+            
+            return (
+              <div key={category} className="p-6">
+                <h3 className="text-md font-medium text-gray-900 dark:text-white mb-4">
+                  {label}
+                </h3>
+                {hasData ? (
+                  <div className={category === 'colors' 
+                    ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
+                    : 'space-y-2'
+                  }>
+                    {Object.entries(data!).map(([k, v], index) => (
+                      category === 'colors' ? (
+                        <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                          <div
+                            className="w-8 h-8 rounded-md border border-gray-300 dark:border-gray-600 flex-shrink-0"
+                            style={{ backgroundColor: v }}
+                          />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{k}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{v}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">{k}</span>
+                          <span className="text-sm text-gray-600 dark:text-gray-400 font-mono">{v}</span>
+                        </div>
+                      )
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  <p className="text-gray-500 dark:text-gray-400 italic">无数据</p>
+                )}
               </div>
-            ) : (
-              <p className="text-gray-500 dark:text-gray-400 italic">无颜色定义</p>
-            )}
-          </div>
-
-          <div className="p-6">
-            <h3 className="text-md font-medium text-gray-900 dark:text-white mb-4">
-              排版 (typography)
-            </h3>
-            {schema.tokens.typography && Object.keys(schema.tokens.typography).length > 0 ? (
-              <div className="space-y-2">
-                {Object.entries(schema.tokens.typography).map(([key, value], index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">{key}</span>
-                    <span className="text-sm text-gray-600 dark:text-gray-400 font-mono">{value}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 dark:text-gray-400 italic">无排版定义</p>
-            )}
-          </div>
-
-          <div className="p-6">
-            <h3 className="text-md font-medium text-gray-900 dark:text-white mb-4">
-              间距 (spacing)
-            </h3>
-            {schema.tokens.spacing && Object.keys(schema.tokens.spacing).length > 0 ? (
-              <div className="space-y-2">
-                {Object.entries(schema.tokens.spacing).map(([key, value], index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">{key}</span>
-                    <span className="text-sm text-gray-600 dark:text-gray-400 font-mono">{value}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 dark:text-gray-400 italic">无间距定义</p>
-            )}
-          </div>
+            );
+          })}
         </div>
       </div>
 

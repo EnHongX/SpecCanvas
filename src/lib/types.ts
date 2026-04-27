@@ -41,6 +41,12 @@ export interface SchemaTokens {
   colors: Record<string, string>;
   typography: Record<string, string>;
   spacing: Record<string, string>;
+  radii: Record<string, string>;
+  breakpoints: Record<string, string>;
+  shadows: Record<string, string>;
+  borders: Record<string, string>;
+  opacity: Record<string, string>;
+  zIndex: Record<string, string>;
 }
 
 export interface Schema {

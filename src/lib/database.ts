@@ -12,8 +12,8 @@ const ensureDbDirExists = () => {
   }
 };
 
-// 数据库实例
 let db: SqlJsDatabase | null = null;
+let initPromise: Promise<SqlJsDatabase> | null = null;
 let isInitialized = false;
 
 // 保存数据库到文件
@@ -119,11 +119,6 @@ const ensureTablesExist = (database: SqlJsDatabase) => {
 };
 
 const initDatabase = async (): Promise<SqlJsDatabase> => {
-  if (isInitialized && db) {
-    ensureTablesExist(db);
-    return db;
-  }
-
   try {
     ensureDbDirExists();
     
@@ -159,12 +154,24 @@ const initDatabase = async (): Promise<SqlJsDatabase> => {
   }
 };
 
-// 获取数据库实例
 export const getDb = async (): Promise<SqlJsDatabase> => {
-  if (!db || !isInitialized) {
-    return await initDatabase();
+  if (initPromise) {
+    return initPromise;
   }
-  return db;
+
+  if (db && isInitialized) {
+    ensureTablesExist(db);
+    return db;
+  }
+
+  initPromise = initDatabase();
+  
+  try {
+    const result = await initPromise;
+    return result;
+  } finally {
+    initPromise = null;
+  }
 };
 
 // 保存数据库的辅助函数

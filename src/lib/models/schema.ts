@@ -11,6 +11,12 @@ const getDefaultSchemaTokens = (): SchemaTokens => ({
   colors: {},
   typography: {},
   spacing: {},
+  radii: {},
+  breakpoints: {},
+  shadows: {},
+  borders: {},
+  opacity: {},
+  zIndex: {},
 });
 
 export const schemaModel = {
