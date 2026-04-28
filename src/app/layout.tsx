@@ -35,6 +35,12 @@ export default function RootLayout({
                     文档列表
                   </a>
                   <a
+                    href="/types"
+                    className="text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    类型管理
+                  </a>
+                  <a
                     href="/documents/new"
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-md text-sm font-medium"
                   >

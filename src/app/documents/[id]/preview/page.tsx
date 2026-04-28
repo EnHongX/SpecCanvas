@@ -3,24 +3,17 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { documentModel } from '@/lib/models/document';
 import { parseDesignMarkdown } from '@/lib/design-preview';
 import { DesignPreview } from '@/components/DesignPreview';
 import { notFound } from 'next/navigation';
 import type { Document } from '@/lib/types';
 import type { ParseResult } from '@/lib/design-preview/types';
 
-interface PreviewPageProps {
-  params: {
-    id: string;
-  };
-}
-
 export default function PreviewPage() {
   const params = useParams();
   const documentId = parseInt(params.id as string, 10);
   
-  const [document, setDocument] = useState<Document | null>(null);
+  const [doc, setDoc] = useState<Document | null>(null);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDark, setIsDark] = useState(false);
@@ -41,10 +34,10 @@ export default function PreviewPage() {
           notFound();
         }
         
-        const doc = data.data as Document;
-        setDocument(doc);
+        const documentData = data.data as Document;
+        setDoc(documentData);
         
-        const result = parseDesignMarkdown(doc.raw_markdown);
+        const result = parseDesignMarkdown(documentData.raw_markdown);
         setParseResult(result);
       } catch (error) {
         console.error('Error fetching document:', error);
@@ -58,10 +51,15 @@ export default function PreviewPage() {
   }, [documentId]);
 
   useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    
+    const rootElement = document.documentElement;
+    if (!rootElement) return;
+    
     if (isDark) {
-      document.documentElement.classList.add('dark');
+      rootElement.classList.add('dark');
     } else {
-      document.documentElement.classList.remove('dark');
+      rootElement.classList.remove('dark');
     }
   }, [isDark]);
 
