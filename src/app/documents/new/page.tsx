@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useRef, ChangeEvent, FormEvent } from 'react';
+import { useState, useRef, useEffect, ChangeEvent, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import type { DocumentType } from '@/lib/types';
 
 interface FormState {
   title: string;
   raw_markdown: string;
-  status: 'draft' | 'published' | 'archived';
+  type_id: number | null;
   source_type: 'file' | 'paste';
 }
 
@@ -40,19 +41,45 @@ export default function NewDocumentPage() {
   const [formState, setFormState] = useState<FormState>({
     title: '',
     raw_markdown: '',
-    status: 'draft',
+    type_id: null,
     source_type: 'paste',
   });
   
+  const [types, setTypes] = useState<DocumentType[]>([]);
+  const [isLoadingTypes, setIsLoadingTypes] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchTypes = async () => {
+      try {
+        const response = await fetch('/api/types');
+        const data = await response.json();
+        if (data.success && data.data?.types) {
+          setTypes(data.data.types);
+        }
+      } catch (err) {
+        console.error('Error fetching types:', err);
+      } finally {
+        setIsLoadingTypes(false);
+      }
+    };
+    fetchTypes();
+  }, []);
 
   const handleInputChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
-    setFormState(prev => ({ ...prev, [name]: value }));
+    if (name === 'type_id') {
+      setFormState(prev => ({ 
+        ...prev, 
+        [name]: value === '' ? null : parseInt(value, 10) 
+      }));
+    } else {
+      setFormState(prev => ({ ...prev, [name]: value }));
+    }
     setError(null);
   };
 
@@ -188,7 +215,7 @@ export default function NewDocumentPage() {
             title: formState.title.trim(),
             raw_markdown: formState.raw_markdown,
             source_type: formState.source_type,
-            status: formState.status,
+            type_id: formState.type_id,
           }),
         });
       } catch (fetchError) {
@@ -276,25 +303,49 @@ export default function NewDocumentPage() {
           />
         </div>
 
-        {/* Status Selection */}
+        {/* Type Selection */}
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
           <label 
-            htmlFor="status" 
+            htmlFor="type_id" 
             className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
           >
-            文档状态
+            文档类型
           </label>
-          <select
-            id="status"
-            name="status"
-            value={formState.status}
-            onChange={handleInputChange}
-            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
-          >
-            <option value="draft">草稿</option>
-            <option value="published">已发布</option>
-            <option value="archived">已归档</option>
-          </select>
+          {isLoadingTypes ? (
+            <div className="py-2 text-gray-500 dark:text-gray-400">
+              加载类型列表...
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <select
+                id="type_id"
+                name="type_id"
+                value={formState.type_id === null ? '' : formState.type_id}
+                onChange={handleInputChange}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+              >
+                <option value="">无类型</option>
+                {types.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
+              </select>
+              {formState.type_id !== null && (
+                <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
+                  <span 
+                    className="inline-block w-3 h-3 rounded-full mr-2"
+                    style={{ 
+                      backgroundColor: types.find(t => t.id === formState.type_id)?.color || '#3B82F6' 
+                    }}
+                  />
+                  <span>
+                    {types.find(t => t.id === formState.type_id)?.description || '暂无描述'}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Content Input Type Selection */}

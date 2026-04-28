@@ -2,26 +2,21 @@ import { getDb, saveDatabase } from '../database';
 import { Document, CreateDocumentRequest, UpdateDocumentRequest } from '../types';
 
 export const documentModel = {
-  // 创建新文档
   create: async (data: CreateDocumentRequest): Promise<Document> => {
     const db = await getDb();
-    const status = data.status || 'draft';
+    const typeId = data.type_id || null;
     const now = new Date().toISOString();
     
-    // 插入文档
     db.run(`
-      INSERT INTO documents (title, source_type, raw_markdown, status, created_at, updated_at)
+      INSERT INTO documents (title, source_type, raw_markdown, type_id, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `, [data.title, data.source_type, data.raw_markdown, status, now, now]);
+    `, [data.title, data.source_type, data.raw_markdown, typeId, now, now]);
     
-    // 获取刚创建的文档 ID
     const result = db.exec("SELECT last_insert_rowid() as id");
     const lastInsertId = result[0]?.values[0][0] as number;
     
-    // 保存数据库到文件
     saveDatabase();
     
-    // 获取刚创建的文档
     const getResult = db.exec(`
       SELECT * FROM documents WHERE id = ?
     `, [lastInsertId]);
@@ -32,13 +27,12 @@ export const documentModel = {
       title: document[1] as string,
       source_type: document[2] as 'file' | 'paste',
       raw_markdown: document[3] as string,
-      status: document[4] as 'draft' | 'published' | 'archived',
+      type_id: document[4] as number | null,
       created_at: document[5] as string,
       updated_at: document[6] as string,
     };
   },
 
-  // 根据 ID 获取文档
   getById: async (id: number): Promise<Document | null> => {
     const db = await getDb();
     
@@ -56,21 +50,46 @@ export const documentModel = {
       title: document[1] as string,
       source_type: document[2] as 'file' | 'paste',
       raw_markdown: document[3] as string,
-      status: document[4] as 'draft' | 'published' | 'archived',
+      type_id: document[4] as number | null,
       created_at: document[5] as string,
       updated_at: document[6] as string,
     };
   },
 
-  // 获取所有文档（分页）
-  getAll: async (limit: number = 50, offset: number = 0): Promise<Document[]> => {
+  getAll: async (limit: number = 50, offset: number = 0, options?: {
+    typeId?: number | null;
+    sortBy?: 'created_at' | 'updated_at' | 'title';
+    sortOrder?: 'asc' | 'desc';
+  }): Promise<Document[]> => {
     const db = await getDb();
+    const { typeId, sortBy = 'created_at', sortOrder = 'desc' } = options || {};
     
-    const result = db.exec(`
-      SELECT * FROM documents
-      ORDER BY created_at DESC
-      LIMIT ? OFFSET ?
-    `, [limit, offset]);
+    let query = `SELECT * FROM documents`;
+    const conditions: string[] = [];
+    const values: (number | string)[] = [];
+    
+    if (typeId !== undefined) {
+      if (typeId === null) {
+        conditions.push('type_id IS NULL');
+      } else {
+        conditions.push('type_id = ?');
+        values.push(typeId);
+      }
+    }
+    
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+    
+    const validSortFields = ['created_at', 'updated_at', 'title'];
+    const actualSortBy = validSortFields.includes(sortBy) ? sortBy : 'created_at';
+    const actualSortOrder = sortOrder === 'asc' ? 'ASC' : 'DESC';
+    
+    query += ` ORDER BY ${actualSortBy} ${actualSortOrder}`;
+    query += ` LIMIT ? OFFSET ?`;
+    values.push(limit, offset);
+    
+    const result = db.exec(query, values);
     
     if (!result[0] || result[0].values.length === 0) {
       return [];
@@ -81,19 +100,34 @@ export const documentModel = {
       title: document[1] as string,
       source_type: document[2] as 'file' | 'paste',
       raw_markdown: document[3] as string,
-      status: document[4] as 'draft' | 'published' | 'archived',
+      type_id: document[4] as number | null,
       created_at: document[5] as string,
       updated_at: document[6] as string,
     }));
   },
 
-  // 获取文档总数
-  count: async (): Promise<number> => {
+  count: async (options?: { typeId?: number | null }): Promise<number> => {
     const db = await getDb();
+    const { typeId } = options || {};
     
-    const result = db.exec(`
-      SELECT COUNT(*) as count FROM documents
-    `);
+    let query = `SELECT COUNT(*) as count FROM documents`;
+    const conditions: string[] = [];
+    const values: (number | string)[] = [];
+    
+    if (typeId !== undefined) {
+      if (typeId === null) {
+        conditions.push('type_id IS NULL');
+      } else {
+        conditions.push('type_id = ?');
+        values.push(typeId);
+      }
+    }
+    
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+    
+    const result = db.exec(query, values);
     
     if (!result[0] || result[0].values.length === 0) {
       return 0;
@@ -102,9 +136,7 @@ export const documentModel = {
     return result[0].values[0][0] as number;
   },
 
-  // 更新文档
   update: async (id: number, data: UpdateDocumentRequest): Promise<Document | null> => {
-    // 检查文档是否存在
     const existingDoc = await documentModel.getById(id);
     if (!existingDoc) {
       return null;
@@ -113,9 +145,8 @@ export const documentModel = {
     const db = await getDb();
     const now = new Date().toISOString();
 
-    // 构建更新语句
     const updates: string[] = ['updated_at = ?'];
-    const values: (string | number)[] = [now];
+    const values: (string | number | null)[] = [now];
 
     if (data.title !== undefined) {
       updates.push('title = ?');
@@ -127,9 +158,9 @@ export const documentModel = {
       values.push(data.raw_markdown);
     }
 
-    if (data.status !== undefined) {
-      updates.push('status = ?');
-      values.push(data.status);
+    if (data.type_id !== undefined) {
+      updates.push('type_id = ?');
+      values.push(data.type_id);
     }
 
     values.push(id);
@@ -140,10 +171,8 @@ export const documentModel = {
       WHERE id = ?
     `, values);
 
-    // 保存数据库到文件
     saveDatabase();
 
-    // 返回更新后的文档
     return await documentModel.getById(id);
   },
 

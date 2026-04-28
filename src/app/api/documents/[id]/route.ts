@@ -1,8 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { documentModel } from '@/lib/models/document';
-import { UpdateDocumentRequest, ApiResponse } from '@/lib/types';
+import { typeModel } from '@/lib/models/type';
+import { UpdateDocumentRequest, ApiResponse, ErrorType } from '@/lib/types';
 
-// GET /api/documents/[id] - 获取单个文档
+function createErrorResponse(
+  message: string, 
+  errorType: ErrorType, 
+  status: number
+): NextResponse {
+  const response: ApiResponse<null> = {
+    success: false,
+    error: message,
+    errorType: errorType
+  };
+  return NextResponse.json(response, { status });
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -11,21 +24,21 @@ export async function GET(
     const id = parseInt(params.id, 10);
     
     if (isNaN(id)) {
-      const response: ApiResponse<null> = {
-        success: false,
-        error: 'Invalid document ID'
-      };
-      return NextResponse.json(response, { status: 400 });
+      return createErrorResponse(
+        '无效的文档 ID',
+        'validation_error',
+        400
+      );
     }
     
     const document = await documentModel.getById(id);
     
     if (!document) {
-      const response: ApiResponse<null> = {
-        success: false,
-        error: 'Document not found'
-      };
-      return NextResponse.json(response, { status: 404 });
+      return createErrorResponse(
+        '文档不存在',
+        'validation_error',
+        404
+      );
     }
     
     const response: ApiResponse<typeof document> = {
@@ -36,15 +49,14 @@ export async function GET(
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('Error fetching document:', error);
-    const response: ApiResponse<null> = {
-      success: false,
-      error: 'Failed to fetch document'
-    };
-    return NextResponse.json(response, { status: 500 });
+    return createErrorResponse(
+      '获取文档失败，请稍后重试',
+      'database_error',
+      500
+    );
   }
 }
 
-// PUT /api/documents/[id] - 更新文档
 export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -53,32 +65,34 @@ export async function PUT(
     const id = parseInt(params.id, 10);
     
     if (isNaN(id)) {
-      const response: ApiResponse<null> = {
-        success: false,
-        error: 'Invalid document ID'
-      };
-      return NextResponse.json(response, { status: 400 });
+      return createErrorResponse(
+        '无效的文档 ID',
+        'validation_error',
+        400
+      );
     }
     
     const body: UpdateDocumentRequest = await request.json();
     
-    // 验证 status（如果提供）
-    if (body.status && !['draft', 'published', 'archived'].includes(body.status)) {
-      const response: ApiResponse<null> = {
-        success: false,
-        error: 'Invalid status. Must be one of: draft, published, archived'
-      };
-      return NextResponse.json(response, { status: 400 });
+    if (body.type_id !== undefined && body.type_id !== null) {
+      const type = await typeModel.getById(body.type_id);
+      if (!type) {
+        return createErrorResponse(
+          '指定的类型不存在',
+          'validation_error',
+          400
+        );
+      }
     }
     
     const updatedDocument = await documentModel.update(id, body);
     
     if (!updatedDocument) {
-      const response: ApiResponse<null> = {
-        success: false,
-        error: 'Document not found'
-      };
-      return NextResponse.json(response, { status: 404 });
+      return createErrorResponse(
+        '文档不存在',
+        'validation_error',
+        404
+      );
     }
     
     const response: ApiResponse<typeof updatedDocument> = {
@@ -89,15 +103,14 @@ export async function PUT(
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('Error updating document:', error);
-    const response: ApiResponse<null> = {
-      success: false,
-      error: 'Failed to update document'
-    };
-    return NextResponse.json(response, { status: 500 });
+    return createErrorResponse(
+      '更新文档失败，请稍后重试',
+      'database_error',
+      500
+    );
   }
 }
 
-// DELETE /api/documents/[id] - 删除文档
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -106,21 +119,21 @@ export async function DELETE(
     const id = parseInt(params.id, 10);
     
     if (isNaN(id)) {
-      const response: ApiResponse<null> = {
-        success: false,
-        error: 'Invalid document ID'
-      };
-      return NextResponse.json(response, { status: 400 });
+      return createErrorResponse(
+        '无效的文档 ID',
+        'validation_error',
+        400
+      );
     }
     
     const success = await documentModel.delete(id);
     
     if (!success) {
-      const response: ApiResponse<null> = {
-        success: false,
-        error: 'Document not found'
-      };
-      return NextResponse.json(response, { status: 404 });
+      return createErrorResponse(
+        '文档不存在',
+        'validation_error',
+        404
+      );
     }
     
     const response: ApiResponse<null> = {
@@ -130,10 +143,10 @@ export async function DELETE(
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('Error deleting document:', error);
-    const response: ApiResponse<null> = {
-      success: false,
-      error: 'Failed to delete document'
-    };
-    return NextResponse.json(response, { status: 500 });
+    return createErrorResponse(
+      '删除文档失败，请稍后重试',
+      'database_error',
+      500
+    );
   }
 }
