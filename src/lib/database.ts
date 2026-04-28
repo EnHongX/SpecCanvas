@@ -78,6 +78,70 @@ const loadSqlJs = async () => {
   }
 };
 
+const checkColumnExists = (database: SqlJsDatabase, tableName: string, columnName: string): boolean => {
+  try {
+    const result = database.exec(`PRAGMA table_info(${tableName})`);
+    if (result.length === 0 || result[0].values.length === 0) {
+      return false;
+    }
+    
+    for (const row of result[0].values) {
+      if (row[1] === columnName) {
+        return true;
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error('检查列是否存在时出错:', error);
+    return false;
+  }
+};
+
+const migrateDocumentsTable = (database: SqlJsDatabase) => {
+  console.log('开始迁移 documents 表...');
+  
+  try {
+    const createNewDocumentsTable = `
+      CREATE TABLE documents_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        raw_markdown TEXT NOT NULL,
+        type_id INTEGER NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        FOREIGN KEY (type_id) REFERENCES document_types(id) ON DELETE SET NULL
+      );
+    `;
+    
+    database.run(createNewDocumentsTable);
+    
+    const hasStatusColumn = checkColumnExists(database, 'documents', 'status');
+    
+    if (hasStatusColumn) {
+      console.log('检测到旧表结构（包含 status 列），正在迁移数据...');
+      
+      database.run(`
+        INSERT INTO documents_new (id, title, source_type, raw_markdown, created_at, updated_at)
+        SELECT id, title, source_type, raw_markdown, created_at, updated_at
+        FROM documents
+      `);
+      
+      console.log('数据迁移完成');
+    } else {
+      console.log('未检测到 status 列，跳过数据迁移');
+    }
+    
+    database.run('DROP TABLE documents');
+    database.run('ALTER TABLE documents_new RENAME TO documents');
+    
+    console.log('documents 表迁移完成');
+  } catch (error) {
+    console.error('迁移 documents 表时出错:', error);
+    throw error;
+  }
+};
+
 const ensureTablesExist = (database: SqlJsDatabase) => {
   const createDocumentTypesTable = `
     CREATE TABLE IF NOT EXISTS document_types (
@@ -92,20 +156,47 @@ const ensureTablesExist = (database: SqlJsDatabase) => {
 
   database.run(createDocumentTypesTable);
 
-  const createDocumentsTable = `
-    CREATE TABLE IF NOT EXISTS documents (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      source_type TEXT NOT NULL,
-      raw_markdown TEXT NOT NULL,
-      type_id INTEGER NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-      FOREIGN KEY (type_id) REFERENCES document_types(id) ON DELETE SET NULL
-    );
-  `;
-
-  database.run(createDocumentsTable);
+  const tableCheckResult = database.exec(`
+    SELECT name FROM sqlite_master WHERE type='table' AND name='documents'
+  `);
+  
+  const documentsTableExists = tableCheckResult.length > 0 && tableCheckResult[0].values.length > 0;
+  
+  if (!documentsTableExists) {
+    console.log('documents 表不存在，创建新表...');
+    const createDocumentsTable = `
+      CREATE TABLE documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        raw_markdown TEXT NOT NULL,
+        type_id INTEGER NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        FOREIGN KEY (type_id) REFERENCES document_types(id) ON DELETE SET NULL
+      );
+    `;
+    database.run(createDocumentsTable);
+  } else {
+    const hasStatusColumn = checkColumnExists(database, 'documents', 'status');
+    const hasTypeIdColumn = checkColumnExists(database, 'documents', 'type_id');
+    
+    if (hasStatusColumn && !hasTypeIdColumn) {
+      console.log('检测到旧表结构，需要迁移');
+      migrateDocumentsTable(database);
+    } else if (!hasTypeIdColumn) {
+      console.log('检测到缺少 type_id 列，添加列...');
+      try {
+        database.run(`
+          ALTER TABLE documents ADD COLUMN type_id INTEGER NULL
+        `);
+        console.log('type_id 列添加成功');
+      } catch (error) {
+        console.warn('添加 type_id 列失败，尝试执行完整迁移:', error);
+        migrateDocumentsTable(database);
+      }
+    }
+  }
 
   const createSchemasTable = `
     CREATE TABLE IF NOT EXISTS schemas (
