@@ -1,9 +1,30 @@
+export interface DocumentType {
+  id: number;
+  name: string;
+  description: string;
+  color: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateDocumentTypeRequest {
+  name: string;
+  description?: string;
+  color?: string;
+}
+
+export interface UpdateDocumentTypeRequest {
+  name?: string;
+  description?: string;
+  color?: string;
+}
+
 export interface Document {
   id: number;
   title: string;
   source_type: 'file' | 'paste';
   raw_markdown: string;
-  status: 'draft' | 'published' | 'archived';
+  type_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -12,13 +33,13 @@ export interface CreateDocumentRequest {
   title: string;
   source_type: 'file' | 'paste';
   raw_markdown: string;
-  status?: 'draft' | 'published' | 'archived';
+  type_id?: number | null;
 }
 
 export interface UpdateDocumentRequest {
   title?: string;
   raw_markdown?: string;
-  status?: 'draft' | 'published' | 'archived';
+  type_id?: number | null;
 }
 
 export type ErrorType = 

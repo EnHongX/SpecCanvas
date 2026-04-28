@@ -79,15 +79,29 @@ const loadSqlJs = async () => {
 };
 
 const ensureTablesExist = (database: SqlJsDatabase) => {
+  const createDocumentTypesTable = `
+    CREATE TABLE IF NOT EXISTS document_types (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '' NOT NULL,
+      color TEXT DEFAULT '#3B82F6' NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+    );
+  `;
+
+  database.run(createDocumentTypesTable);
+
   const createDocumentsTable = `
     CREATE TABLE IF NOT EXISTS documents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
       source_type TEXT NOT NULL,
       raw_markdown TEXT NOT NULL,
-      status TEXT DEFAULT 'draft' NOT NULL,
+      type_id INTEGER NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      FOREIGN KEY (type_id) REFERENCES document_types(id) ON DELETE SET NULL
     );
   `;
 
@@ -112,7 +126,8 @@ const ensureTablesExist = (database: SqlJsDatabase) => {
   const createIndexes = `
     CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at);
     CREATE INDEX IF NOT EXISTS idx_documents_updated_at ON documents(updated_at);
-    CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
+    CREATE INDEX IF NOT EXISTS idx_documents_type_id ON documents(type_id);
+    CREATE INDEX IF NOT EXISTS idx_document_types_name ON document_types(name);
   `;
 
   database.run(createIndexes);
