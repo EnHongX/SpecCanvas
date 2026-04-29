@@ -65,15 +65,14 @@ export async function POST(
       }
     }
 
-    const unresolved: string[] = [];
-    for (const component of parseResult.data.components) {
-      if (component.name) {
-        const item = component.description
-          ? `${component.name}: ${component.description}`
-          : component.name;
-        unresolved.push(item);
+    const spacing: Record<string, string> = {};
+    for (const sp of parseResult.data.spacing) {
+      if (sp.name && sp.value) {
+        spacing[sp.name] = sp.value;
       }
     }
+
+    const unresolved: string[] = [...parseResult.data.unresolved];
 
     const schemaContent: SchemaContent = {
       meta: {
@@ -84,7 +83,7 @@ export async function POST(
       tokens: {
         colors,
         typography,
-        spacing: {},
+        spacing,
       },
       unresolved,
     };

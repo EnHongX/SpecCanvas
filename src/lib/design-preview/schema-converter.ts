@@ -1,5 +1,5 @@
 import type { Schema } from '@/lib/types';
-import type { DesignPreviewData, DesignColor, DesignTypography, ParseResult } from './types';
+import type { DesignPreviewData, DesignColor, DesignTypography, DesignSpacing, DesignComponent, ParseResult } from './types';
 
 export const isSchemaReady = (schema: Schema): boolean => {
   const hasMeta = !!(schema.meta.name && schema.meta.description);
@@ -37,18 +37,24 @@ export const schemaToDesignPreviewData = (schema: Schema): ParseResult => {
     errors.push('Schema 中缺少字体定义。请在 Schema 页面补充 tokens.typography。');
   }
 
-  const components = schema.unresolved.map((item) => ({
-    name: item.split(':')[0]?.trim() || item,
-    description: item.split(':').slice(1).join(':').trim() || '',
-  })).slice(0, 9);
+  const spacing: DesignSpacing[] = Object.entries(schema.tokens.spacing).map(([name, value]) => ({
+    name,
+    value,
+  }));
+
+  const unresolved: string[] = [...schema.unresolved];
+
+  const components: DesignComponent[] = [];
 
   const data: DesignPreviewData = {
     title: schema.meta.name || '未命名设计系统',
     description: schema.meta.description || '暂无描述',
     colors: colors.length > 0 ? colors : [{ name: 'Primary', value: '#0066cc' }],
     typography: typography.length > 0 ? typography : [{ name: 'Body', value: '16px / 1.5 / 400' }],
+    spacing,
     components,
     responsive: [],
+    unresolved,
   };
 
   return {

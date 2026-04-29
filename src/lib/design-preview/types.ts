@@ -14,6 +14,8 @@ export interface DesignTypography extends DesignToken {
   fontWeight?: string;
 }
 
+export interface DesignSpacing extends DesignToken {}
+
 export interface DesignComponent {
   name: string;
   description: string;
@@ -30,8 +32,10 @@ export interface DesignPreviewData {
   description: string;
   colors: DesignColor[];
   typography: DesignTypography[];
+  spacing: DesignSpacing[];
   components: DesignComponent[];
   responsive: DesignResponsive[];
+  unresolved: string[];
 }
 
 export interface ParseResult {
