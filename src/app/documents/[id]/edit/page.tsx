@@ -7,7 +7,6 @@ import Link from 'next/link';
 interface FormState {
   title: string;
   raw_markdown: string;
-  status: 'draft' | 'published' | 'archived';
 }
 
 interface ApiResponse<T> {
@@ -22,7 +21,7 @@ interface Document {
   title: string;
   source_type: 'file' | 'paste';
   raw_markdown: string;
-  status: 'draft' | 'published' | 'archived';
+  type_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -45,7 +44,6 @@ export default function EditDocumentPage() {
   const [formState, setFormState] = useState<FormState>({
     title: '',
     raw_markdown: '',
-    status: 'draft',
   });
   
   const [isLoading, setIsLoading] = useState(true);
@@ -74,7 +72,6 @@ export default function EditDocumentPage() {
         setFormState({
           title: data.data.title,
           raw_markdown: data.data.raw_markdown,
-          status: data.data.status,
         });
         setIsLoading(false);
       } catch (err) {
@@ -88,7 +85,7 @@ export default function EditDocumentPage() {
   }, [documentId]);
 
   const handleInputChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
     setFormState(prev => ({ ...prev, [name]: value }));
@@ -134,7 +131,6 @@ export default function EditDocumentPage() {
         body: JSON.stringify({
           title: formState.title.trim(),
           raw_markdown: formState.raw_markdown,
-          status: formState.status,
         }),
       });
       
@@ -251,26 +247,6 @@ export default function EditDocumentPage() {
             placeholder="请输入文档标题"
             className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
           />
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-          <label 
-            htmlFor="status" 
-            className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-          >
-            文档状态
-          </label>
-          <select
-            id="status"
-            name="status"
-            value={formState.status}
-            onChange={handleInputChange}
-            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
-          >
-            <option value="draft">草稿</option>
-            <option value="published">已发布</option>
-            <option value="archived">已归档</option>
-          </select>
         </div>
 
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
