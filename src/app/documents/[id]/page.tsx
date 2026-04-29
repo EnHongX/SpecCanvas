@@ -28,32 +28,6 @@ export default async function DocumentPage({ params }: DocumentPageProps) {
     notFound();
   }
 
-  const getStatusBadgeClass = (status: string) => {
-    switch (status) {
-      case 'draft':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
-      case 'published':
-        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
-      case 'archived':
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
-      default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'draft':
-        return '草稿';
-      case 'published':
-        return '已发布';
-      case 'archived':
-        return '已归档';
-      default:
-        return status;
-    }
-  };
-
   const getSourceTypeText = (sourceType: string) => {
     return sourceType === 'file' ? '文件导入' : '粘贴内容';
   };
@@ -115,13 +89,6 @@ export default async function DocumentPage({ params }: DocumentPageProps) {
             <span className="mr-2 font-medium">来源类型:</span>
             <span className="inline-block px-2 py-1 text-xs font-medium rounded bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
               {getSourceTypeText(document.source_type)}
-            </span>
-          </div>
-          
-          <div className="flex items-center">
-            <span className="mr-2 font-medium">状态:</span>
-            <span className={`inline-block px-2 py-1 text-xs font-medium rounded ${getStatusBadgeClass(document.status)}`}>
-              {getStatusText(document.status)}
             </span>
           </div>
           

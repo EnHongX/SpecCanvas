@@ -117,15 +117,6 @@ export default async function Home() {
                 <span className={`inline-block px-2 py-1 text-xs font-medium rounded bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200`}>
                   {doc.source_type === 'file' ? '文件导入' : '粘贴内容'}
                 </span>
-                <span className={`inline-block px-2 py-1 text-xs font-medium rounded ${
-                  doc.status === 'draft'
-                    ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
-                    : doc.status === 'published'
-                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                    : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
-                }`}>
-                  {doc.status === 'draft' ? '草稿' : doc.status === 'published' ? '已发布' : '已归档'}
-                </span>
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 创建于: {new Date(doc.created_at).toLocaleString('zh-CN')}
