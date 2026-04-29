@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     const typeIdParam = searchParams.get('typeId');
     const sortBy = searchParams.get('sortBy') || 'created_at';
     const sortOrder = searchParams.get('sortOrder') || 'desc';
+    const search = searchParams.get('search') || undefined;
     
     if (isNaN(limit) || limit <= 0 || limit > 100) {
       return createErrorResponse(
@@ -62,9 +63,10 @@ export async function GET(request: NextRequest) {
     const documents = await documentModel.getAll(limit, offset, {
       typeId,
       sortBy: actualSortBy,
-      sortOrder: actualSortOrder
+      sortOrder: actualSortOrder,
+      search
     });
-    const total = await documentModel.count({ typeId });
+    const total = await documentModel.count({ typeId, search });
     
     const response: ApiResponse<{ documents: typeof documents; total: number }> = {
       success: true,

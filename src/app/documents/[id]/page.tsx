@@ -1,5 +1,6 @@
 import { documentModel } from '@/lib/models/document';
-import { Document } from '@/lib/types';
+import { typeModel } from '@/lib/models/type';
+import { Document, DocumentType } from '@/lib/types';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
@@ -17,11 +18,15 @@ export default async function DocumentPage({ params }: DocumentPageProps) {
   }
   
   let document: Document | null = null;
+  let types: DocumentType[] = [];
   
   try {
-    document = await documentModel.getById(id);
+    [document, types] = await Promise.all([
+      documentModel.getById(id),
+      typeModel.getAll(),
+    ]);
   } catch (error) {
-    console.error('Error fetching document:', error);
+    console.error('Error fetching data:', error);
   }
   
   if (!document) {
@@ -30,6 +35,17 @@ export default async function DocumentPage({ params }: DocumentPageProps) {
 
   const getSourceTypeText = (sourceType: string) => {
     return sourceType === 'file' ? '文件导入' : '粘贴内容';
+  };
+
+  const getTypeInfo = (docTypeId: number | null) => {
+    if (docTypeId === null) {
+      return { name: '无类型', color: '#9CA3AF' };
+    }
+    const type = types.find(t => t.id === docTypeId);
+    if (type) {
+      return { name: type.name, color: type.color };
+    }
+    return { name: '未知类型', color: '#9CA3AF' };
   };
 
   return (
@@ -90,6 +106,21 @@ export default async function DocumentPage({ params }: DocumentPageProps) {
             <span className="inline-block px-2 py-1 text-xs font-medium rounded bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
               {getSourceTypeText(document.source_type)}
             </span>
+          </div>
+          
+          <div className="flex items-center">
+            <span className="mr-2 font-medium">文档类型:</span>
+            {(() => {
+              const typeInfo = getTypeInfo(document.type_id);
+              return (
+                <span 
+                  className="inline-block px-2 py-1 text-xs font-medium rounded text-white"
+                  style={{ backgroundColor: typeInfo.color }}
+                >
+                  {typeInfo.name}
+                </span>
+              );
+            })()}
           </div>
           
           <div className="flex items-center">

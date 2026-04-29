@@ -31,6 +31,8 @@ export default function DocumentsPage() {
   const [typeId, setTypeId] = useState<number | null | undefined>(undefined);
   const [sortBy, setSortBy] = useState<'created_at' | 'updated_at' | 'title'>('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchInput, setSearchInput] = useState('');
   
   const [deletingDoc, setDeletingDoc] = useState<{ id: number; title: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -62,6 +64,9 @@ export default function DocumentsPage() {
       if (typeId !== undefined) {
         documentsUrl += `&typeId=${typeId === null ? 'null' : typeId}`;
       }
+      if (searchTerm.trim()) {
+        documentsUrl += `&search=${encodeURIComponent(searchTerm.trim())}`;
+      }
       
       const [documentsResponse, typesResponse] = await Promise.all([
         fetch(documentsUrl),
@@ -92,7 +97,24 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     fetchData();
-  }, [currentPage, typeId, sortBy, sortOrder]);
+  }, [currentPage, typeId, sortBy, sortOrder, searchTerm]);
+
+  const handleSearch = () => {
+    setSearchTerm(searchInput);
+    setCurrentPage(1);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchInput('');
+    setSearchTerm('');
+    setCurrentPage(1);
+  };
 
   const handleDelete = async () => {
     if (!deletingDoc) return;
@@ -181,17 +203,75 @@ export default function DocumentsPage() {
       )}
 
       <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-900 dark:text-white">
-              筛选与排序
-            </p>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              调整列表展示范围和排列顺序
-            </p>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                搜索与筛选
+              </p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                按标题或内容搜索文档，支持与类型筛选、排序组合使用
+              </p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:min-w-[620px]">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                  搜索文档
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                      onKeyDown={handleSearchKeyDown}
+                      placeholder="按标题或内容搜索..."
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    />
+                    {searchInput && (
+                      <button
+                        type="button"
+                        onClick={handleClearSearch}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSearch}
+                    className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    搜索
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {searchTerm && (
+              <div className="text-sm text-gray-600 dark:text-gray-400">
+                当前搜索关键词: <span className="font-medium text-indigo-600 dark:text-indigo-400">"{searchTerm}"</span>
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="ml-2 text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  清除搜索
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 pt-2 border-t border-gray-200 dark:border-gray-700">
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
                 按类型筛选

@@ -11,6 +11,16 @@ interface FormState {
   color: string;
 }
 
+interface Document {
+  id: number;
+  title: string;
+  source_type: 'file' | 'paste';
+  raw_markdown: string;
+  type_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const DEFAULT_COLORS = [
   '#3B82F6',
   '#10B981',
@@ -33,6 +43,8 @@ export default function TypesPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingType, setEditingType] = useState<DocumentType | null>(null);
   const [deletingType, setDeletingType] = useState<DocumentType | null>(null);
+  const [deletingTypeUsage, setDeletingTypeUsage] = useState<{ count: number; documents: Document[] } | null>(null);
+  const [isLoadingUsage, setIsLoadingUsage] = useState(false);
   
   const [formState, setFormState] = useState<FormState>({
     name: '',
@@ -101,6 +113,43 @@ export default function TypesPage() {
 
   const handleColorSelect = (color: string) => {
     setFormState(prev => ({ ...prev, color }));
+  };
+
+  const fetchTypeUsage = async (typeId: number) => {
+    setIsLoadingUsage(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`/api/documents?typeId=${typeId}&limit=5&offset=0`);
+      const data: ApiResponse<{ documents: Document[]; total: number }> = await response.json();
+      
+      if (response.ok && data.success) {
+        setDeletingTypeUsage({
+          count: data.data?.total || 0,
+          documents: data.data?.documents || [],
+        });
+      } else {
+        setDeletingTypeUsage({ count: 0, documents: [] });
+      }
+    } catch (err) {
+      console.error('Error fetching type usage:', err);
+      setDeletingTypeUsage({ count: 0, documents: [] });
+    } finally {
+      setIsLoadingUsage(false);
+    }
+  };
+
+  const handleDeleteClick = async (type: DocumentType) => {
+    setDeletingType(type);
+    setDeletingTypeUsage(null);
+    setError(null);
+    await fetchTypeUsage(type.id);
+  };
+
+  const handleCancelDelete = () => {
+    setDeletingType(null);
+    setDeletingTypeUsage(null);
+    setError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -305,7 +354,7 @@ export default function TypesPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setDeletingType(type)}
+                          onClick={() => handleDeleteClick(type)}
                           className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 font-medium"
                         >
                           删除
@@ -448,46 +497,95 @@ export default function TypesPage() {
 
       {deletingType && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-full mx-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
             <div className="p-6">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                确认删除
+                确认删除类型
               </h2>
-              <p className="text-gray-600 dark:text-gray-300 mb-6">
-                确定要删除类型 "{deletingType.name}" 吗？此操作无法撤销。
-                <br />
-                <span className="text-sm text-red-500">
-                  注意：如果有文档绑定了此类型，则无法删除。
-                </span>
-              </p>
               
-              {error && (
-                <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                  <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+              {isLoadingUsage ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600 dark:text-gray-300">正在检查类型使用情况...</p>
                 </div>
+              ) : (
+                <>
+                  <p className="text-gray-600 dark:text-gray-300 mb-4">
+                    确定要删除类型 <span className="font-semibold">"{deletingType.name}"</span> 吗？此操作无法撤销。
+                  </p>
+                  
+                  {deletingTypeUsage && (
+                    <div className={`mb-4 p-4 rounded-lg ${
+                      deletingTypeUsage.count > 0 
+                        ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800' 
+                        : 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+                    }`}>
+                      {deletingTypeUsage.count > 0 ? (
+                        <>
+                          <p className="font-medium text-amber-800 dark:text-amber-200 mb-2">
+                            ⚠️ 该类型正在被 <span className="text-lg font-bold">{deletingTypeUsage.count}</span> 个文档使用
+                          </p>
+                          <p className="text-sm text-amber-700 dark:text-amber-300 mb-3">
+                            无法删除此类型，因为有文档绑定了此类型。请先为这些文档重新分配类型。
+                          </p>
+                          {deletingTypeUsage.documents.length > 0 && (
+                            <div>
+                              <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-2">
+                                使用此类型的部分文档：
+                              </p>
+                              <ul className="space-y-1">
+                                {deletingTypeUsage.documents.map((doc) => (
+                                  <li key={doc.id} className="text-sm text-amber-700 dark:text-amber-300 flex items-center">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-2"></span>
+                                    {doc.title}
+                                  </li>
+                                ))}
+                                {deletingTypeUsage.count > deletingTypeUsage.documents.length && (
+                                  <li className="text-sm text-amber-600 dark:text-amber-400 flex items-center">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mr-2"></span>
+                                    ...还有 {deletingTypeUsage.count - deletingTypeUsage.documents.length} 个文档
+                                  </li>
+                                )}
+                              </ul>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-green-700 dark:text-green-300">
+                          ✓ 该类型没有被任何文档使用，可以安全删除。
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  
+                  {error && (
+                    <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                    </div>
+                  )}
+                  
+                  <div className="flex justify-end space-x-4">
+                    <button
+                      type="button"
+                      onClick={handleCancelDelete}
+                      disabled={isCreating}
+                      className="px-6 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                    >
+                      取消
+                    </button>
+                    {deletingTypeUsage && deletingTypeUsage.count === 0 && (
+                      <button
+                        type="button"
+                        onClick={handleDelete}
+                        disabled={isCreating}
+                        className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isCreating ? '删除中...' : '确认删除'}
+                      </button>
+                    )}
+                  </div>
+                </>
               )}
-              
-              <div className="flex justify-end space-x-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeletingType(null);
-                    setError(null);
-                  }}
-                  disabled={isCreating}
-                  className="px-6 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={isCreating}
-                  className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isCreating ? '删除中...' : '确认删除'}
-                </button>
-              </div>
             </div>
           </div>
         </div>

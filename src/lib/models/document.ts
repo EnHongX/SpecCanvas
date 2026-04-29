@@ -60,9 +60,10 @@ export const documentModel = {
     typeId?: number | null;
     sortBy?: 'created_at' | 'updated_at' | 'title';
     sortOrder?: 'asc' | 'desc';
+    search?: string;
   }): Promise<Document[]> => {
     const db = await getDb();
-    const { typeId, sortBy = 'created_at', sortOrder = 'desc' } = options || {};
+    const { typeId, sortBy = 'created_at', sortOrder = 'desc', search } = options || {};
     
     let query = `SELECT * FROM documents`;
     const conditions: string[] = [];
@@ -75,6 +76,12 @@ export const documentModel = {
         conditions.push('type_id = ?');
         values.push(typeId);
       }
+    }
+    
+    if (search && search.trim()) {
+      const searchTerm = `%${search.trim()}%`;
+      conditions.push('(title LIKE ? OR raw_markdown LIKE ?)');
+      values.push(searchTerm, searchTerm);
     }
     
     if (conditions.length > 0) {
@@ -106,9 +113,9 @@ export const documentModel = {
     }));
   },
 
-  count: async (options?: { typeId?: number | null }): Promise<number> => {
+  count: async (options?: { typeId?: number | null; search?: string }): Promise<number> => {
     const db = await getDb();
-    const { typeId } = options || {};
+    const { typeId, search } = options || {};
     
     let query = `SELECT COUNT(*) as count FROM documents`;
     const conditions: string[] = [];
@@ -121,6 +128,12 @@ export const documentModel = {
         conditions.push('type_id = ?');
         values.push(typeId);
       }
+    }
+    
+    if (search && search.trim()) {
+      const searchTerm = `%${search.trim()}%`;
+      conditions.push('(title LIKE ? OR raw_markdown LIKE ?)');
+      values.push(searchTerm, searchTerm);
     }
     
     if (conditions.length > 0) {
