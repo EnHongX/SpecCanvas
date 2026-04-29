@@ -156,7 +156,7 @@ const compareMeta = (oldMeta: SchemaMeta, newMeta: SchemaMeta): MetaDiff[] => {
 
 const compareTokens = (oldTokens: Record<string, string>, newTokens: Record<string, string>): TokenDiff[] => {
   const diffs: TokenDiff[] = [];
-  const allKeys = new Set([...Object.keys(oldTokens), ...Object.keys(newTokens)];
+  const allKeys = Array.from(new Set([...Object.keys(oldTokens), ...Object.keys(newTokens)]));
   
   for (const key of allKeys) {
     const oldValue = oldTokens[key];
@@ -179,12 +179,14 @@ const compareTokens = (oldTokens: Record<string, string>, newTokens: Record<stri
 const compareUnresolved = (oldItems: string[], newItems: string[]): { items: string[]; type: DiffType }[] => {
   const diffs: { items: string[]; type: DiffType }[] = [];
   
-  const oldSet = new Set(oldItems.filter(i => i.trim()));
-  const newSet = new Set(newItems.filter(i => i.trim()));
+  const oldFiltered = oldItems.filter(i => i.trim());
+  const newFiltered = newItems.filter(i => i.trim());
+  const oldSet = new Set(oldFiltered);
+  const newSet = new Set(newFiltered);
   
-  const added = [...newSet].filter(x => !oldSet.has(x));
-  const deleted = [...oldSet].filter(x => !newSet.has(x));
-  const unchanged = [...oldSet].filter(x => newSet.has(x));
+  const added = Array.from(newSet).filter(x => !oldSet.has(x));
+  const deleted = Array.from(oldSet).filter(x => !newSet.has(x));
+  const unchanged = Array.from(oldSet).filter(x => newSet.has(x));
   
   if (added.length > 0) {
     diffs.push({ items: added, type: 'added' });
@@ -255,6 +257,14 @@ const getDiffTypeBgColor = (type: DiffType): string => {
     case 'deleted': return 'bg-red-50 dark:bg-red-900/20';
     case 'unchanged': return 'bg-gray-50 dark:bg-gray-700';
   }
+};
+
+const getChangedItems = <T extends { type: DiffType }>(items: T[]): T[] => {
+  return items.filter(item => item.type !== 'unchanged');
+};
+
+const hasChanges = <T extends { type: DiffType }>(items: T[]): boolean => {
+  return items.some(item => item.type !== 'unchanged');
 };
 
 export default function SchemaPage() {
@@ -700,181 +710,206 @@ export default function SchemaPage() {
 
           {schemaDiff.hasChanges && (
             <div className="space-y-4 mb-4">
-              {schemaDiff.meta.length > 0 && schemaDiff.meta.some(d => d.type !== 'unchanged') && (
-                <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                  <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
-                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">基本信息变更</h4>
-                  </div>
-                  <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {schemaDiff.meta.filter(d => d.type !== 'unchanged').map((diff, index) => (
-                      <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
-                        <div className="flex items-center justify-between">
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${getDiffTypeColor(diff.type)} bg-white/50`}>
-                            {getDiffTypeLabel(diff.type)}
-                          </span>
-                          <span className="text-sm font-medium text-gray-900 dark:text-white">
-                            {diff.field === 'name' ? '设计系统名称' : 
-                             diff.field === 'description' ? '描述' : '关键词'}
-                          </span>
+              {(() => {
+                const changedMeta = getChangedItems(schemaDiff.meta);
+                if (changedMeta.length === 0) return null;
+                
+                return (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                    <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-white">基本信息变更</h4>
+                    </div>
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {changedMeta.map((diff, index) => (
+                        <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
+                          <div className="flex items-center justify-between">
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded ${getDiffTypeColor(diff.type)} bg-white/50`}>
+                              {getDiffTypeLabel(diff.type)}
+                            </span>
+                            <span className="text-sm font-medium text-gray-900 dark:text-white">
+                              {diff.field === 'name' ? '设计系统名称' : 
+                               diff.field === 'description' ? '描述' : '关键词'}
+                            </span>
+                          </div>
+                          <div className="mt-2 space-y-1">
+                            {diff.oldValue !== undefined && diff.oldValue !== '' && (
+                              <div className="flex items-center text-sm">
+                                <span className="text-gray-500 dark:text-gray-400 mr-2">旧值:</span>
+                                <span className="text-gray-700 dark:text-gray-300 line-through">{diff.oldValue || '(空)'}</span>
+                              </div>
+                            )}
+                            {diff.newValue !== undefined && (
+                              <div className="flex items-center text-sm">
+                                <span className="text-gray-500 dark:text-gray-400 mr-2">新值:</span>
+                                <span className={`font-medium ${getDiffTypeColor(diff.type)}`}>{diff.newValue || '(空)'}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="mt-2 space-y-1">
-                          {diff.oldValue !== undefined && diff.oldValue !== '' && (
-                            <div className="flex items-center text-sm">
-                              <span className="text-gray-500 dark:text-gray-400 mr-2">旧值:</span>
-                              <span className="text-gray-700 dark:text-gray-300 line-through">{diff.oldValue || '(空)'}</span>
-                            </div>
-                          )}
-                          {diff.newValue !== undefined && (
-                            <div className="flex items-center text-sm">
-                              <span className="text-gray-500 dark:text-gray-400 mr-2">新值:</span>
-                              <span className={`font-medium ${getDiffTypeColor(diff.type)}`}>{diff.newValue || '(空)'}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
-              {schemaDiff.colors.length > 0 && schemaDiff.colors.some(d => d.type !== 'unchanged') && (
-                <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                  <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
-                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">颜色变更</h4>
+              {(() => {
+                const changedColors = getChangedItems(schemaDiff.colors);
+                if (changedColors.length === 0) return null;
+                
+                return (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                    <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-white">颜色变更</h4>
+                    </div>
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {changedColors.map((diff, index) => (
+                        <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded ${getDiffTypeColor(diff.type)} bg-white/50`}>
+                                {getDiffTypeLabel(diff.type)}
+                              </span>
+                              <span className="text-sm font-medium text-gray-900 dark:text-white">{diff.key}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {diff.oldValue && (
+                                <div className="flex items-center gap-1">
+                                  <div 
+                                    className="w-6 h-6 rounded border border-gray-300"
+                                    style={{ backgroundColor: isValidHexColor(diff.oldValue) ? diff.oldValue : '#e5e7eb' }}
+                                  />
+                                  <span className="text-xs text-gray-500 dark:text-gray-400 font-mono line-through">{diff.oldValue}</span>
+                                </div>
+                              )}
+                              {diff.oldValue && diff.newValue && (
+                                <span className="text-gray-400">→</span>
+                              )}
+                              {diff.newValue && (
+                                <div className="flex items-center gap-1">
+                                  <div 
+                                    className="w-6 h-6 rounded border border-gray-300"
+                                    style={{ backgroundColor: isValidHexColor(diff.newValue) ? diff.newValue : '#e5e7eb' }}
+                                  />
+                                  <span className={`text-xs font-mono ${getDiffTypeColor(diff.type)}`}>{diff.newValue}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {schemaDiff.colors.filter(d => d.type !== 'unchanged').map((diff, index) => (
-                      <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
+                );
+              })()}
+
+              {(() => {
+                const changedTypography = getChangedItems(schemaDiff.typography);
+                if (changedTypography.length === 0) return null;
+                
+                return (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                    <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-white">字体变更</h4>
+                    </div>
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {changedTypography.map((diff, index) => (
+                        <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
+                          <div className="flex items-center gap-2 mb-2">
                             <span className={`text-xs font-medium px-2 py-0.5 rounded ${getDiffTypeColor(diff.type)} bg-white/50`}>
                               {getDiffTypeLabel(diff.type)}
                             </span>
                             <span className="text-sm font-medium text-gray-900 dark:text-white">{diff.key}</span>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="space-y-1 text-sm">
                             {diff.oldValue && (
-                              <div className="flex items-center gap-1">
-                                <div 
-                                  className="w-6 h-6 rounded border border-gray-300"
-                                  style={{ backgroundColor: isValidHexColor(diff.oldValue) ? diff.oldValue : '#e5e7eb' }}
-                                />
-                                <span className="text-xs text-gray-500 dark:text-gray-400 font-mono line-through">{diff.oldValue}</span>
+                              <div className="flex items-start gap-2">
+                                <span className="text-gray-500 dark:text-gray-400 shrink-0">旧值:</span>
+                                <span className="text-gray-700 dark:text-gray-300 line-break-anywhere line-through">{diff.oldValue}</span>
                               </div>
                             )}
-                            {diff.oldValue && diff.newValue && (
-                              <span className="text-gray-400">→</span>
-                            )}
                             {diff.newValue && (
-                              <div className="flex items-center gap-1">
-                                <div 
-                                  className="w-6 h-6 rounded border border-gray-300"
-                                  style={{ backgroundColor: isValidHexColor(diff.newValue) ? diff.newValue : '#e5e7eb' }}
-                                />
-                                <span className={`text-xs font-mono ${getDiffTypeColor(diff.type)}`}>{diff.newValue}</span>
+                              <div className="flex items-start gap-2">
+                                <span className="text-gray-500 dark:text-gray-400 shrink-0">新值:</span>
+                                <span className={`${getDiffTypeColor(diff.type)} font-medium line-break-anywhere`}>{diff.newValue}</span>
                               </div>
                             )}
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
-              {schemaDiff.typography.length > 0 && schemaDiff.typography.some(d => d.type !== 'unchanged') && (
-                <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                  <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
-                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">字体变更</h4>
+              {(() => {
+                const changedSpacing = getChangedItems(schemaDiff.spacing);
+                if (changedSpacing.length === 0) return null;
+                
+                return (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                    <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-white">间距变更</h4>
+                    </div>
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {changedSpacing.map((diff, index) => (
+                        <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded ${getDiffTypeColor(diff.type)} bg-white/50`}>
+                                {getDiffTypeLabel(diff.type)}
+                              </span>
+                              <span className="text-sm font-medium text-gray-900 dark:text-white">{diff.key}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {diff.oldValue && (
+                                <span className="text-sm text-gray-500 dark:text-gray-400 font-mono line-through">{diff.oldValue}</span>
+                              )}
+                              {diff.oldValue && diff.newValue && (
+                                <span className="text-gray-400">→</span>
+                              )}
+                              {diff.newValue && (
+                                <span className={`text-sm font-mono ${getDiffTypeColor(diff.type)}`}>{diff.newValue}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {schemaDiff.typography.filter(d => d.type !== 'unchanged').map((diff, index) => (
-                      <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${getDiffTypeColor(diff.type)} bg-white/50`}>
+                );
+              })()}
+
+              {(() => {
+                const changedUnresolved = schemaDiff.unresolved.filter(d => d.type !== 'unchanged');
+                if (changedUnresolved.length === 0) return null;
+                
+                return (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                    <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-white">待确认事项变更</h4>
+                    </div>
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {changedUnresolved.map((diff, index) => (
+                        <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${getDiffTypeColor(diff.type)} bg-white/50 mb-2 inline-block`}>
                             {getDiffTypeLabel(diff.type)}
                           </span>
-                          <span className="text-sm font-medium text-gray-900 dark:text-white">{diff.key}</span>
+                          <ul className="space-y-1">
+                            {diff.items.map((item, itemIndex) => (
+                              <li key={itemIndex} className={`text-sm ${getDiffTypeColor(diff.type)} flex items-center`}>
+                                <span className="w-1.5 h-1.5 rounded-full mr-2" 
+                                      style={{ backgroundColor: diff.type === 'added' ? '#10B981' : diff.type === 'deleted' ? '#EF4444' : '#6B7280' }} 
+                                />
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
                         </div>
-                        <div className="space-y-1 text-sm">
-                          {diff.oldValue && (
-                            <div className="flex items-start gap-2">
-                              <span className="text-gray-500 dark:text-gray-400 shrink-0">旧值:</span>
-                              <span className="text-gray-700 dark:text-gray-300 line-break-anywhere line-through">{diff.oldValue}</span>
-                            </div>
-                          )}
-                          {diff.newValue && (
-                            <div className="flex items-start gap-2">
-                              <span className="text-gray-500 dark:text-gray-400 shrink-0">新值:</span>
-                              <span className={`${getDiffTypeColor(diff.type)} font-medium line-break-anywhere`}>{diff.newValue}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-
-              {schemaDiff.spacing.length > 0 && schemaDiff.spacing.some(d => d.type !== 'unchanged') && (
-                <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                  <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
-                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">间距变更</h4>
-                  </div>
-                  <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {schemaDiff.spacing.filter(d => d.type !== 'unchanged').map((diff, index) => (
-                      <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className={`text-xs font-medium px-2 py-0.5 rounded ${getDiffTypeColor(diff.type)} bg-white/50`}>
-                              {getDiffTypeLabel(diff.type)}
-                            </span>
-                            <span className="text-sm font-medium text-gray-900 dark:text-white">{diff.key}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {diff.oldValue && (
-                              <span className="text-sm text-gray-500 dark:text-gray-400 font-mono line-through">{diff.oldValue}</span>
-                            )}
-                            {diff.oldValue && diff.newValue && (
-                              <span className="text-gray-400">→</span>
-                            )}
-                            {diff.newValue && (
-                              <span className={`text-sm font-mono ${getDiffTypeColor(diff.type)}`}>{diff.newValue}</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {schemaDiff.unresolved.length > 0 && schemaDiff.unresolved.some(d => d.type !== 'unchanged') && (
-                <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                  <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
-                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">待确认事项变更</h4>
-                  </div>
-                  <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {schemaDiff.unresolved.filter(d => d.type !== 'unchanged').map((diff, index) => (
-                      <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded ${getDiffTypeColor(diff.type)} bg-white/50 mb-2 inline-block`}>
-                          {getDiffTypeLabel(diff.type)}
-                        </span>
-                        <ul className="space-y-1">
-                          {diff.items.map((item, itemIndex) => (
-                            <li key={itemIndex} className={`text-sm ${getDiffTypeColor(diff.type)} flex items-center`}>
-                              <span className="w-1.5 h-1.5 rounded-full mr-2" 
-                                    style={{ backgroundColor: diff.type === 'added' ? '#10B981' : diff.type === 'deleted' ? '#EF4444' : '#6B7280' }} 
-                              />
-                              {item}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           )}
 
