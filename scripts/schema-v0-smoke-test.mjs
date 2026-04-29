@@ -131,7 +131,6 @@ const run = async () => {
         title: 'Schema v0 smoke test',
         source_type: 'paste',
         raw_markdown: '# Schema v0 smoke test\n\nThis document verifies schema persistence.',
-        status: 'draft',
       }),
     });
 
@@ -195,6 +194,68 @@ const run = async () => {
     assert(invalid.body.details.some((item) => item.includes('tokens.spacing')), '缺少 tokens.spacing 错误明细');
     assert(invalid.body.details.some((item) => item.includes('radii')), '缺少不支持 token 错误明细');
     assert(invalid.body.details.some((item) => item.includes('unresolved')), '缺少 unresolved 错误明细');
+
+    const extractMarkdown = `# Extracted Design System
+
+This document verifies Markdown to Schema extraction.
+
+## Colors
+primary: #2563eb
+surface: #ffffff
+
+## Typography
+body: 16px / 1.5 / 400
+heading: 32px / 1.2 / 700
+
+## Spacing
+md: 16px
+lg: 24px
+
+## Unresolved
+- 移动端导航还没定
+- 确认按钮 hover 状态
+`;
+
+    const extractDoc = await requestJson(baseUrl, '/api/documents', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: 'Markdown extraction smoke test',
+        source_type: 'paste',
+        raw_markdown: extractMarkdown,
+      }),
+    });
+
+    assert(extractDoc.response.status === 201, `创建提取测试文档失败，HTTP ${extractDoc.response.status}`);
+    assert(extractDoc.body.success && extractDoc.body.data?.id, '提取测试文档响应缺少 data.id');
+
+    const extractDocumentId = extractDoc.body.data.id;
+    const extracted = await requestJson(baseUrl, `/api/documents/${extractDocumentId}/extract-schema`, {
+      method: 'POST',
+    });
+
+    assert(extracted.response.status === 200, `Markdown 提取失败，HTTP ${extracted.response.status}`);
+    assert(extracted.body.success && extracted.body.data, 'Markdown 提取响应缺少 data');
+    assert(extracted.body.data.meta.name === 'Extracted Design System', '未提取标题到 meta.name');
+    assert(extracted.body.data.tokens.colors.primary === '#2563eb', '未提取 colors.primary');
+    assert(extracted.body.data.tokens.typography.body === '16px / 1.5 / 400', '未提取 typography.body');
+    assert(extracted.body.data.tokens.spacing.md === '16px', '未提取 spacing.md');
+    assert(extracted.body.data.tokens.spacing.lg === '24px', '未提取 spacing.lg');
+    assert(
+      extracted.body.data.unresolved.includes('移动端导航还没定'),
+      '未提取 unresolved 列表项'
+    );
+
+    const savedExtracted = await requestJson(baseUrl, `/api/documents/${extractDocumentId}/schema`, {
+      method: 'PUT',
+      body: JSON.stringify(extracted.body.data),
+    });
+
+    assert(savedExtracted.response.status === 200, `保存提取 Schema 失败，HTTP ${savedExtracted.response.status}`);
+    assert(savedExtracted.body.data.tokens.spacing.md === '16px', '保存后 spacing.md 丢失');
+    assert(
+      savedExtracted.body.data.unresolved.includes('确认按钮 hover 状态'),
+      '保存后 unresolved 列表项丢失'
+    );
 
     console.log('Schema v0 smoke test passed');
   } catch (error) {
