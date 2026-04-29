@@ -66,11 +66,196 @@ interface FormState {
   unresolved: string[];
 }
 
+type DiffType = 'added' | 'modified' | 'deleted' | 'unchanged';
+
+interface TokenDiff {
+  key: string;
+  oldValue?: string;
+  newValue?: string;
+  type: DiffType;
+}
+
+interface MetaDiff {
+  field: string;
+  oldValue?: string;
+  newValue?: string;
+  type: DiffType;
+}
+
+interface SchemaDiff {
+  meta: MetaDiff[];
+  colors: TokenDiff[];
+  typography: TokenDiff[];
+  spacing: TokenDiff[];
+  unresolved: { items: string[]; type: DiffType }[];
+  hasChanges: boolean;
+}
+
 const emptyTokenEntry = (): TokenEntry => ({
   id: generateId(),
   key: '',
   value: '',
 });
+
+const compareMeta = (oldMeta: SchemaMeta, newMeta: SchemaMeta): MetaDiff[] => {
+  const diffs: MetaDiff[] = [];
+  
+  if (oldMeta.name !== newMeta.name) {
+    diffs.push({
+      field: 'name',
+      oldValue: oldMeta.name,
+      newValue: newMeta.name,
+      type: oldMeta.name ? (newMeta.name ? 'modified' : 'deleted') : 'added',
+    });
+  } else if (oldMeta.name || newMeta.name) {
+    diffs.push({
+      field: 'name',
+      oldValue: oldMeta.name,
+      newValue: newMeta.name,
+      type: 'unchanged',
+    });
+  }
+  
+  if (oldMeta.description !== newMeta.description) {
+    diffs.push({
+      field: 'description',
+      oldValue: oldMeta.description,
+      newValue: newMeta.description,
+      type: oldMeta.description ? (newMeta.description ? 'modified' : 'deleted') : 'added',
+    });
+  } else if (oldMeta.description || newMeta.description) {
+    diffs.push({
+      field: 'description',
+      oldValue: oldMeta.description,
+      newValue: newMeta.description,
+      type: 'unchanged',
+    });
+  }
+  
+  const oldKeywords = oldMeta.keywords || [];
+  const newKeywords = newMeta.keywords || [];
+  
+  if (JSON.stringify(oldKeywords.sort()) !== JSON.stringify(newKeywords.sort())) {
+    diffs.push({
+      field: 'keywords',
+      oldValue: oldKeywords.join(', '),
+      newValue: newKeywords.join(', '),
+      type: oldKeywords.length > 0 ? (newKeywords.length > 0 ? 'modified' : 'deleted') : 'added',
+    });
+  } else if (oldKeywords.length > 0 || newKeywords.length > 0) {
+    diffs.push({
+      field: 'keywords',
+      oldValue: oldKeywords.join(', '),
+      newValue: newKeywords.join(', '),
+      type: 'unchanged',
+    });
+  }
+  
+  return diffs;
+};
+
+const compareTokens = (oldTokens: Record<string, string>, newTokens: Record<string, string>): TokenDiff[] => {
+  const diffs: TokenDiff[] = [];
+  const allKeys = new Set([...Object.keys(oldTokens), ...Object.keys(newTokens)];
+  
+  for (const key of allKeys) {
+    const oldValue = oldTokens[key];
+    const newValue = newTokens[key];
+    
+    if (oldValue === undefined) {
+      diffs.push({ key, newValue, type: 'added' });
+    } else if (newValue === undefined) {
+      diffs.push({ key, oldValue, type: 'deleted' });
+    } else if (oldValue !== newValue) {
+      diffs.push({ key, oldValue, newValue, type: 'modified' });
+    } else {
+      diffs.push({ key, oldValue, newValue, type: 'unchanged' });
+    }
+  }
+  
+  return diffs;
+};
+
+const compareUnresolved = (oldItems: string[], newItems: string[]): { items: string[]; type: DiffType }[] => {
+  const diffs: { items: string[]; type: DiffType }[] = [];
+  
+  const oldSet = new Set(oldItems.filter(i => i.trim()));
+  const newSet = new Set(newItems.filter(i => i.trim()));
+  
+  const added = [...newSet].filter(x => !oldSet.has(x));
+  const deleted = [...oldSet].filter(x => !newSet.has(x));
+  const unchanged = [...oldSet].filter(x => newSet.has(x));
+  
+  if (added.length > 0) {
+    diffs.push({ items: added, type: 'added' });
+  }
+  if (deleted.length > 0) {
+    diffs.push({ items: deleted, type: 'deleted' });
+  }
+  if (unchanged.length > 0) {
+    diffs.push({ items: unchanged, type: 'unchanged' });
+  }
+  
+  return diffs;
+};
+
+const calculateSchemaDiff = (oldState: FormState, newState: FormState): SchemaDiff => {
+  const oldColors = toTokenRecord(oldState.colors);
+  const newColors = toTokenRecord(newState.colors);
+  const oldTypography = toTokenRecord(oldState.typography);
+  const newTypography = toTokenRecord(newState.typography);
+  const oldSpacing = toTokenRecord(oldState.spacing);
+  const newSpacing = toTokenRecord(newState.spacing);
+  
+  const metaDiff = compareMeta(oldState.meta, newState.meta);
+  const colorsDiff = compareTokens(oldColors, newColors);
+  const typographyDiff = compareTokens(oldTypography, newTypography);
+  const spacingDiff = compareTokens(oldSpacing, newSpacing);
+  const unresolvedDiff = compareUnresolved(oldState.unresolved, newState.unresolved);
+  
+  const hasChanges = 
+    metaDiff.some(d => d.type !== 'unchanged') ||
+    colorsDiff.some(d => d.type !== 'unchanged') ||
+    typographyDiff.some(d => d.type !== 'unchanged') ||
+    spacingDiff.some(d => d.type !== 'unchanged') ||
+    unresolvedDiff.some(d => d.type !== 'unchanged');
+  
+  return {
+    meta: metaDiff,
+    colors: colorsDiff,
+    typography: typographyDiff,
+    spacing: spacingDiff,
+    unresolved: unresolvedDiff,
+    hasChanges,
+  };
+};
+
+const getDiffTypeLabel = (type: DiffType): string => {
+  switch (type) {
+    case 'added': return '新增';
+    case 'modified': return '修改';
+    case 'deleted': return '删除';
+    case 'unchanged': return '未变化';
+  }
+};
+
+const getDiffTypeColor = (type: DiffType): string => {
+  switch (type) {
+    case 'added': return 'text-green-600 dark:text-green-400';
+    case 'modified': return 'text-amber-600 dark:text-amber-400';
+    case 'deleted': return 'text-red-600 dark:text-red-400';
+    case 'unchanged': return 'text-gray-500 dark:text-gray-400';
+  }
+};
+
+const getDiffTypeBgColor = (type: DiffType): string => {
+  switch (type) {
+    case 'added': return 'bg-green-50 dark:bg-green-900/20';
+    case 'modified': return 'bg-amber-50 dark:bg-amber-900/20';
+    case 'deleted': return 'bg-red-50 dark:bg-red-900/20';
+    case 'unchanged': return 'bg-gray-50 dark:bg-gray-700';
+  }
+};
 
 export default function SchemaPage() {
   const params = useParams();
@@ -98,6 +283,7 @@ export default function SchemaPage() {
   const [showExtractConfirm, setShowExtractConfirm] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractedPreview, setExtractedPreview] = useState<FormState | null>(null);
+  const [schemaDiff, setSchemaDiff] = useState<SchemaDiff | null>(null);
 
   const initializeFromSchema = useCallback((schemaData: Schema) => {
     setSchema(schemaData);
@@ -327,6 +513,8 @@ export default function SchemaPage() {
         unresolved: [...extracted.unresolved],
       };
 
+      const diff = calculateSchemaDiff(formState, newFormState);
+      setSchemaDiff(diff);
       setExtractedPreview(newFormState);
       setShowExtractConfirm(true);
     } catch {
@@ -492,7 +680,7 @@ export default function SchemaPage() {
         </div>
       </div>
 
-      {showExtractConfirm && extractedPreview && (
+      {showExtractConfirm && extractedPreview && schemaDiff && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-6">
           <div className="flex items-start mb-4">
             <svg className="w-6 h-6 text-amber-600 dark:text-amber-400 mr-3 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -503,39 +691,208 @@ export default function SchemaPage() {
                 已从 Markdown 提取新的 Schema
               </h3>
               <p className="text-amber-700 dark:text-amber-300 text-sm">
-                以下是提取结果预览。确认后将替换当前表单内容，然后需要点击「保存」按钮才能永久保存。
+                {schemaDiff.hasChanges 
+                  ? '以下是新旧 Schema 的差异对比。确认后将替换当前表单内容，然后需要点击「保存」按钮才能永久保存。'
+                  : '提取结果与当前 Schema 无差异。'}
               </p>
             </div>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 mb-4 space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-400">设计系统名称：</span>
-              <span className="font-medium text-gray-900 dark:text-white">{extractedPreview.meta.name || '(空)'}</span>
+          {schemaDiff.hasChanges && (
+            <div className="space-y-4 mb-4">
+              {schemaDiff.meta.length > 0 && schemaDiff.meta.some(d => d.type !== 'unchanged') && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                  <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
+                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">基本信息变更</h4>
+                  </div>
+                  <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {schemaDiff.meta.filter(d => d.type !== 'unchanged').map((diff, index) => (
+                      <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
+                        <div className="flex items-center justify-between">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${getDiffTypeColor(diff.type)} bg-white/50`}>
+                            {getDiffTypeLabel(diff.type)}
+                          </span>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                            {diff.field === 'name' ? '设计系统名称' : 
+                             diff.field === 'description' ? '描述' : '关键词'}
+                          </span>
+                        </div>
+                        <div className="mt-2 space-y-1">
+                          {diff.oldValue !== undefined && diff.oldValue !== '' && (
+                            <div className="flex items-center text-sm">
+                              <span className="text-gray-500 dark:text-gray-400 mr-2">旧值:</span>
+                              <span className="text-gray-700 dark:text-gray-300 line-through">{diff.oldValue || '(空)'}</span>
+                            </div>
+                          )}
+                          {diff.newValue !== undefined && (
+                            <div className="flex items-center text-sm">
+                              <span className="text-gray-500 dark:text-gray-400 mr-2">新值:</span>
+                              <span className={`font-medium ${getDiffTypeColor(diff.type)}`}>{diff.newValue || '(空)'}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {schemaDiff.colors.length > 0 && schemaDiff.colors.some(d => d.type !== 'unchanged') && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                  <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
+                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">颜色变更</h4>
+                  </div>
+                  <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {schemaDiff.colors.filter(d => d.type !== 'unchanged').map((diff, index) => (
+                      <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded ${getDiffTypeColor(diff.type)} bg-white/50`}>
+                              {getDiffTypeLabel(diff.type)}
+                            </span>
+                            <span className="text-sm font-medium text-gray-900 dark:text-white">{diff.key}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {diff.oldValue && (
+                              <div className="flex items-center gap-1">
+                                <div 
+                                  className="w-6 h-6 rounded border border-gray-300"
+                                  style={{ backgroundColor: isValidHexColor(diff.oldValue) ? diff.oldValue : '#e5e7eb' }}
+                                />
+                                <span className="text-xs text-gray-500 dark:text-gray-400 font-mono line-through">{diff.oldValue}</span>
+                              </div>
+                            )}
+                            {diff.oldValue && diff.newValue && (
+                              <span className="text-gray-400">→</span>
+                            )}
+                            {diff.newValue && (
+                              <div className="flex items-center gap-1">
+                                <div 
+                                  className="w-6 h-6 rounded border border-gray-300"
+                                  style={{ backgroundColor: isValidHexColor(diff.newValue) ? diff.newValue : '#e5e7eb' }}
+                                />
+                                <span className={`text-xs font-mono ${getDiffTypeColor(diff.type)}`}>{diff.newValue}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {schemaDiff.typography.length > 0 && schemaDiff.typography.some(d => d.type !== 'unchanged') && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                  <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
+                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">字体变更</h4>
+                  </div>
+                  <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {schemaDiff.typography.filter(d => d.type !== 'unchanged').map((diff, index) => (
+                      <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${getDiffTypeColor(diff.type)} bg-white/50`}>
+                            {getDiffTypeLabel(diff.type)}
+                          </span>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">{diff.key}</span>
+                        </div>
+                        <div className="space-y-1 text-sm">
+                          {diff.oldValue && (
+                            <div className="flex items-start gap-2">
+                              <span className="text-gray-500 dark:text-gray-400 shrink-0">旧值:</span>
+                              <span className="text-gray-700 dark:text-gray-300 line-break-anywhere line-through">{diff.oldValue}</span>
+                            </div>
+                          )}
+                          {diff.newValue && (
+                            <div className="flex items-start gap-2">
+                              <span className="text-gray-500 dark:text-gray-400 shrink-0">新值:</span>
+                              <span className={`${getDiffTypeColor(diff.type)} font-medium line-break-anywhere`}>{diff.newValue}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {schemaDiff.spacing.length > 0 && schemaDiff.spacing.some(d => d.type !== 'unchanged') && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                  <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
+                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">间距变更</h4>
+                  </div>
+                  <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {schemaDiff.spacing.filter(d => d.type !== 'unchanged').map((diff, index) => (
+                      <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded ${getDiffTypeColor(diff.type)} bg-white/50`}>
+                              {getDiffTypeLabel(diff.type)}
+                            </span>
+                            <span className="text-sm font-medium text-gray-900 dark:text-white">{diff.key}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {diff.oldValue && (
+                              <span className="text-sm text-gray-500 dark:text-gray-400 font-mono line-through">{diff.oldValue}</span>
+                            )}
+                            {diff.oldValue && diff.newValue && (
+                              <span className="text-gray-400">→</span>
+                            )}
+                            {diff.newValue && (
+                              <span className={`text-sm font-mono ${getDiffTypeColor(diff.type)}`}>{diff.newValue}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {schemaDiff.unresolved.length > 0 && schemaDiff.unresolved.some(d => d.type !== 'unchanged') && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                  <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
+                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">待确认事项变更</h4>
+                  </div>
+                  <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {schemaDiff.unresolved.filter(d => d.type !== 'unchanged').map((diff, index) => (
+                      <div key={index} className={`px-4 py-3 ${getDiffTypeBgColor(diff.type)}`}>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded ${getDiffTypeColor(diff.type)} bg-white/50 mb-2 inline-block`}>
+                          {getDiffTypeLabel(diff.type)}
+                        </span>
+                        <ul className="space-y-1">
+                          {diff.items.map((item, itemIndex) => (
+                            <li key={itemIndex} className={`text-sm ${getDiffTypeColor(diff.type)} flex items-center`}>
+                              <span className="w-1.5 h-1.5 rounded-full mr-2" 
+                                    style={{ backgroundColor: diff.type === 'added' ? '#10B981' : diff.type === 'deleted' ? '#EF4444' : '#6B7280' }} 
+                              />
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-400">颜色数量：</span>
-              <span className="font-medium text-gray-900 dark:text-white">{Object.keys(toTokenRecord(extractedPreview.colors)).length}</span>
+          )}
+
+          {!schemaDiff.hasChanges && (
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-4 mb-4 text-center">
+              <svg className="w-12 h-12 text-green-500 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <p className="text-gray-600 dark:text-gray-400">提取结果与当前 Schema 完全相同，无需更新。</p>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-400">字体数量：</span>
-              <span className="font-medium text-gray-900 dark:text-white">{Object.keys(toTokenRecord(extractedPreview.typography)).length}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-400">间距数量：</span>
-              <span className="font-medium text-gray-900 dark:text-white">{Object.keys(toTokenRecord(extractedPreview.spacing)).length}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-400">待确认事项：</span>
-              <span className="font-medium text-gray-900 dark:text-white">{extractedPreview.unresolved.filter(u => u.trim()).length}</span>
-            </div>
-          </div>
+          )}
 
           <div className="flex gap-3">
             <button
               type="button"
               onClick={confirmExtract}
-              className="inline-flex items-center justify-center bg-amber-600 hover:bg-amber-700 text-white px-5 py-2 rounded-lg font-medium transition-colors"
+              disabled={!schemaDiff.hasChanges}
+              className="inline-flex items-center justify-center bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-5 py-2 rounded-lg font-medium transition-colors"
             >
               确认使用提取结果
             </button>
@@ -544,6 +901,7 @@ export default function SchemaPage() {
               onClick={() => {
                 setShowExtractConfirm(false);
                 setExtractedPreview(null);
+                setSchemaDiff(null);
               }}
               className="inline-flex items-center justify-center bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-5 py-2 rounded-lg font-medium border border-gray-300 dark:border-gray-600 transition-colors"
             >

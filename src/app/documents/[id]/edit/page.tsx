@@ -4,9 +4,19 @@ import { useState, useEffect, ChangeEvent, FormEvent } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 
+interface DocumentType {
+  id: number;
+  name: string;
+  description: string;
+  color: string;
+  created_at: string;
+  updated_at: string;
+}
+
 interface FormState {
   title: string;
   raw_markdown: string;
+  type_id: number | null | undefined;
 }
 
 interface ApiResponse<T> {
@@ -44,15 +54,17 @@ export default function EditDocumentPage() {
   const [formState, setFormState] = useState<FormState>({
     title: '',
     raw_markdown: '',
+    type_id: undefined,
   });
   
+  const [types, setTypes] = useState<DocumentType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchDocument = async () => {
+    const fetchData = async () => {
       if (isNaN(documentId)) {
         setError('无效的文档 ID');
         setIsLoading(false);
@@ -60,35 +72,55 @@ export default function EditDocumentPage() {
       }
 
       try {
-        const response = await fetch(`/api/documents/${documentId}`);
-        const data: ApiResponse<Document> = await response.json();
+        const [documentResponse, typesResponse] = await Promise.all([
+          fetch(`/api/documents/${documentId}`),
+          fetch('/api/types'),
+        ]);
+        
+        const documentData: ApiResponse<Document> = await documentResponse.json();
+        const typesData: ApiResponse<{ types: DocumentType[] }> = await typesResponse.json();
 
-        if (!response.ok || !data.success || !data.data) {
-          setError(data.error || '获取文档失败');
+        if (!documentResponse.ok || !documentData.success || !documentData.data) {
+          setError(documentData.error || '获取文档失败');
           setIsLoading(false);
           return;
         }
 
+        if (typesResponse.ok && typesData.success && typesData.data?.types) {
+          setTypes(typesData.data.types);
+        }
+
         setFormState({
-          title: data.data.title,
-          raw_markdown: data.data.raw_markdown,
+          title: documentData.data.title,
+          raw_markdown: documentData.data.raw_markdown,
+          type_id: documentData.data.type_id,
         });
         setIsLoading(false);
       } catch (err) {
-        console.error('Error fetching document:', err);
-        setError('获取文档失败，请稍后重试');
+        console.error('Error fetching data:', err);
+        setError('获取数据失败，请稍后重试');
         setIsLoading(false);
       }
     };
 
-    fetchDocument();
+    fetchData();
   }, [documentId]);
 
   const handleInputChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
-    setFormState(prev => ({ ...prev, [name]: value }));
+    if (name === 'type_id') {
+      if (value === '') {
+        setFormState(prev => ({ ...prev, type_id: undefined }));
+      } else if (value === 'null') {
+        setFormState(prev => ({ ...prev, type_id: null }));
+      } else {
+        setFormState(prev => ({ ...prev, type_id: parseInt(value, 10) }));
+      }
+    } else {
+      setFormState(prev => ({ ...prev, [name]: value }));
+    }
     setError(null);
     setSuccessMessage(null);
   };
@@ -123,15 +155,21 @@ export default function EditDocumentPage() {
     setIsSubmitting(true);
     
     try {
+      const updateData: Record<string, unknown> = {
+        title: formState.title.trim(),
+        raw_markdown: formState.raw_markdown,
+      };
+      
+      if (formState.type_id !== undefined) {
+        updateData.type_id = formState.type_id;
+      }
+      
       const response = await fetch(`/api/documents/${documentId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          title: formState.title.trim(),
-          raw_markdown: formState.raw_markdown,
-        }),
+        body: JSON.stringify(updateData),
       });
       
       let data: ApiResponse<Document>;
@@ -247,6 +285,33 @@ export default function EditDocumentPage() {
             placeholder="请输入文档标题"
             className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
           />
+        </div>
+
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <label 
+            htmlFor="type_id" 
+            className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+          >
+            文档类型
+          </label>
+          <select
+            id="type_id"
+            name="type_id"
+            value={formState.type_id === undefined ? '' : (formState.type_id === null ? 'null' : formState.type_id)}
+            onChange={handleInputChange}
+            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+          >
+            <option value="">保持当前类型</option>
+            <option value="null">无类型</option>
+            {types.map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            选择"保持当前类型"将不修改文档的类型设置
+          </p>
         </div>
 
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
