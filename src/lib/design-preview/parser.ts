@@ -3,17 +3,20 @@ import type {
   DesignComponent,
   DesignPreviewData,
   DesignResponsive,
+  DesignSpacing,
   DesignTypography,
   ParseResult,
 } from './types';
 
-type SectionKind = 'colors' | 'typography' | 'components' | 'responsive' | 'other';
+type SectionKind = 'colors' | 'typography' | 'spacing' | 'unresolved' | 'components' | 'responsive' | 'other';
 
 const HEX_COLOR_PATTERN = /#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
 
 const SECTION_KEYWORDS: Record<Exclude<SectionKind, 'other'>, string[]> = {
   colors: ['color', 'colour', 'palette', '颜色', '配色'],
   typography: ['typography', 'font', 'type', '字体', '排版'],
+  spacing: ['spacing', 'space', 'gap', 'padding', 'margin', '间距', '边距'],
+  unresolved: ['unresolved', 'pending', 'todo', '待确认', '待办', '待定', '需要确认'],
   components: ['component', 'button', 'card', 'input', 'navigation', 'image treatment', '组件', '按钮', '卡片', '导航'],
   responsive: ['responsive', 'breakpoint', '响应式', '断点'],
 };
@@ -306,6 +309,88 @@ const parseTypographySection = (lines: string[]): DesignTypography[] => {
   return typography;
 };
 
+const parseSpacingSection = (lines: string[]): DesignSpacing[] => {
+  const spacing: DesignSpacing[] = [];
+
+  for (let index = 0; index < lines.length; index++) {
+    const trimmed = lines[index].trim();
+
+    if (isMarkdownTableRow(trimmed)) {
+      const { rows, endIndex } = parseTable(lines, index);
+      index = endIndex - 1;
+
+      if (rows.length < 2) continue;
+
+      const headers = rows[0].map((header) => header.toLowerCase());
+      const nameIndex = headers.findIndex((header) => ['name', 'token', 'size', '名称', '尺寸', '变量名'].some((item) => header.includes(item)));
+      const valueIndex = headers.findIndex((header) => ['value', 'px', 'rem', '值', '数值', '像素'].some((item) => header.includes(item)));
+
+      for (const row of rows.slice(1)) {
+        const name = row[nameIndex >= 0 ? nameIndex : 0];
+        if (!name) continue;
+
+        const value = valueIndex >= 0 ? row[valueIndex] : row.slice(1).filter(Boolean).join(' / ');
+        if (!value) continue;
+
+        spacing.push({
+          name,
+          value,
+        });
+      }
+
+      continue;
+    }
+
+    const kv = parseKeyValueLine(trimmed);
+    if (kv) {
+      spacing.push({
+        name: kv.key,
+        value: kv.value,
+      });
+      continue;
+    }
+
+    const boldLead = parseBoldLead(trimmed);
+    if (boldLead) {
+      spacing.push({
+        name: boldLead.name,
+        value: boldLead.rest || '',
+      });
+      continue;
+    }
+  }
+
+  return spacing;
+};
+
+const parseUnresolvedSection = (lines: string[]): string[] => {
+  const unresolved: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (!trimmed) continue;
+    if (trimmed.startsWith('### ') || trimmed.startsWith('#### ')) continue;
+    if (isMarkdownTableRow(trimmed)) continue;
+
+    let item = trimmed;
+
+    if (item.startsWith('- ') || item.startsWith('* ')) {
+      item = item.slice(2).trim();
+    } else if (item.match(/^\d+\.\s/)) {
+      item = item.replace(/^\d+\.\s/, '').trim();
+    }
+
+    item = stripMarkdown(item);
+
+    if (item) {
+      unresolved.push(item);
+    }
+  }
+
+  return unresolved;
+};
+
 const parseComponentSection = (lines: string[]): DesignComponent[] => {
   const components: DesignComponent[] = [];
   let currentHeading = '';
@@ -426,6 +511,8 @@ export const parseDesignMarkdown = (markdown: string): ParseResult => {
 
   let colors: DesignColor[] = [];
   let typography: DesignTypography[] = [];
+  let spacing: DesignSpacing[] = [];
+  let unresolved: string[] = [];
   let components: DesignComponent[] = [];
   let responsive: DesignResponsive[] = [];
 
@@ -440,6 +527,14 @@ export const parseDesignMarkdown = (markdown: string): ParseResult => {
       typography = typography.concat(parseTypographySection(sectionLines));
     }
 
+    if (range.kind === 'spacing') {
+      spacing = spacing.concat(parseSpacingSection(sectionLines));
+    }
+
+    if (range.kind === 'unresolved') {
+      unresolved = unresolved.concat(parseUnresolvedSection(sectionLines));
+    }
+
     if (range.kind === 'components') {
       components = components.concat(parseComponentSection(sectionLines));
     }
@@ -451,6 +546,8 @@ export const parseDesignMarkdown = (markdown: string): ParseResult => {
 
   colors = uniqueByName(colors).slice(0, 10);
   typography = uniqueByName(typography).slice(0, 8);
+  spacing = uniqueByName(spacing).slice(0, 8);
+  unresolved = Array.from(new Set(unresolved)).slice(0, 20);
   components = uniqueByName(components).slice(0, 9);
   responsive = responsive.slice(0, 8);
 
@@ -471,8 +568,10 @@ export const parseDesignMarkdown = (markdown: string): ParseResult => {
     description: description || 'No description provided.',
     colors: colors.length > 0 ? colors : DEFAULT_COLORS,
     typography: typography.length > 0 ? typography : DEFAULT_TYPOGRAPHY,
+    spacing,
     components: components.length > 0 ? components : DEFAULT_COMPONENTS,
     responsive,
+    unresolved,
   };
 
   return {
