@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { DesignPreview } from '@/components/DesignPreview';
 import { isSchemaReady, schemaToDesignPreviewData } from '@/lib/design-preview/schema-converter';
 import { notFound } from 'next/navigation';
-import type { Document, Schema } from '@/lib/types';
+import type { Schema } from '@/lib/types';
 import type { ParseResult } from '@/lib/design-preview/types';
 
 const readResponseJson = async <T,>(response: Response): Promise<{ success: boolean; data?: T; error?: string; details?: string[] }> => {
@@ -94,12 +94,51 @@ const SchemaNotReadyDisplay = ({ documentId, schema }: { documentId: number; sch
   );
 };
 
+const PreviewToolbar = ({
+  documentId,
+  isDark,
+  onToggleDark,
+}: {
+  documentId: number;
+  isDark: boolean;
+  onToggleDark: () => void;
+}) => {
+  return (
+    <div className="fixed left-4 right-4 top-4 z-50 flex items-center justify-between">
+      <Link
+        href={`/documents/${documentId}`}
+        className="inline-flex h-10 items-center rounded-full border border-gray-200 bg-white/90 px-3 text-sm font-medium text-gray-700 shadow-sm backdrop-blur transition-colors hover:bg-white hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-900/90 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:text-indigo-300"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="mr-1.5 h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+        </svg>
+        返回文档
+      </Link>
+
+      <button
+        type="button"
+        onClick={onToggleDark}
+        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-700 shadow-sm backdrop-blur transition-colors hover:bg-white dark:border-gray-700 dark:bg-gray-900/90 dark:text-gray-200 dark:hover:bg-gray-800"
+        aria-label={isDark ? '切换到浅色模式' : '切换到深色模式'}
+      >
+        {isDark ? (
+          <svg className="h-5 w-5 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+        ) : (
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+          </svg>
+        )}
+      </button>
+    </div>
+  );
+};
+
 export default function PreviewPage() {
   const params = useParams();
-  const router = useRouter();
   const documentId = useMemo(() => Number.parseInt(params.id as string, 10), [params.id]);
 
-  const [doc, setDoc] = useState<Document | null>(null);
   const [schema, setSchema] = useState<Schema | null>(null);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -117,13 +156,11 @@ export default function PreviewPage() {
 
       try {
         const documentResponse = await fetch(`/api/documents/${documentId}`);
-        const documentData = await readResponseJson<Document>(documentResponse);
+        const documentData = await readResponseJson<unknown>(documentResponse);
 
         if (!documentResponse.ok || !documentData.success || !documentData.data) {
           notFound();
         }
-
-        setDoc(documentData.data);
 
         const schemaResponse = await fetch(`/api/documents/${documentId}/schema`);
         const schemaData = await readResponseJson<Schema>(schemaResponse);
@@ -220,34 +257,7 @@ export default function PreviewPage() {
   if (!isSchemaReady(schema)) {
     return (
       <div className="relative">
-        <div className="fixed top-4 left-4 z-50 flex items-center gap-4">
-          <Link
-            href={`/documents/${documentId}`}
-            className="inline-flex items-center px-4 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-            </svg>
-            返回文档
-          </Link>
-
-          <button
-            onClick={() => setIsDark(!isDark)}
-            className="p-3 rounded-full bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            aria-label={isDark ? '切换到浅色模式' : '切换到深色模式'}
-          >
-            {isDark ? (
-              <svg className="w-5 h-5 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-            ) : (
-              <svg className="w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-              </svg>
-            )}
-          </button>
-        </div>
-
+        <PreviewToolbar documentId={documentId} isDark={isDark} onToggleDark={() => setIsDark(!isDark)} />
         <SchemaNotReadyDisplay documentId={documentId} schema={schema} />
       </div>
     );
@@ -265,34 +275,7 @@ export default function PreviewPage() {
 
   return (
     <div className="relative">
-      <div className="fixed top-4 left-4 z-50 flex items-center gap-4">
-        <Link
-          href={`/documents/${documentId}`}
-          className="inline-flex items-center px-4 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium transition-colors"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-          </svg>
-          返回文档
-        </Link>
-
-        <button
-          onClick={() => setIsDark(!isDark)}
-          className="p-3 rounded-full bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-          aria-label={isDark ? '切换到浅色模式' : '切换到深色模式'}
-        >
-          {isDark ? (
-            <svg className="w-5 h-5 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-            </svg>
-          )}
-        </button>
-      </div>
-
+      <PreviewToolbar documentId={documentId} isDark={isDark} onToggleDark={() => setIsDark(!isDark)} />
       <DesignPreview parseResult={parseResult} />
     </div>
   );

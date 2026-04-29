@@ -157,7 +157,7 @@ export default function DocumentsPage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             文档列表
@@ -166,6 +166,12 @@ export default function DocumentsPage() {
             共 {totalDocuments} 个文档
           </p>
         </div>
+        {/* <Link
+          href="/documents/new"
+          className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700"
+        >
+          新建文档
+        </Link> */}
       </div>
 
       {error && (
@@ -174,59 +180,70 @@ export default function DocumentsPage() {
         </div>
       )}
 
-      <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-        <div className="flex flex-wrap gap-4 items-end">
+      <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              按类型筛选
-            </label>
-            <select
-              value={typeId === undefined ? '' : (typeId === null ? 'null' : typeId)}
-              onChange={handleTypeChange}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white text-sm"
-            >
-              <option value="">全部类型</option>
-              <option value="null">无类型</option>
-              {types.map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
+            <p className="text-sm font-medium text-gray-900 dark:text-white">
+              筛选与排序
+            </p>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              调整列表展示范围和排列顺序
+            </p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              排序字段
-            </label>
-            <select
-              value={sortBy}
-              onChange={handleSortByChange}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white text-sm"
-            >
-              {sortFields.map((field) => (
-                <option key={field.value} value={field.value}>
-                  {field.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:min-w-[620px]">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                按类型筛选
+              </label>
+              <select
+                value={typeId === undefined ? '' : (typeId === null ? 'null' : typeId)}
+                onChange={handleTypeChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              >
+                <option value="">全部类型</option>
+                <option value="null">无类型</option>
+                {types.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              排序方式
-            </label>
-            <select
-              value={sortOrder}
-              onChange={handleSortOrderChange}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white text-sm"
-            >
-              {sortOrders.map((order) => (
-                <option key={order.value} value={order.value}>
-                  {order.label}
-                </option>
-              ))}
-            </select>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                排序字段
+              </label>
+              <select
+                value={sortBy}
+                onChange={handleSortByChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              >
+                {sortFields.map((field) => (
+                  <option key={field.value} value={field.value}>
+                    {field.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                排序方式
+              </label>
+              <select
+                value={sortOrder}
+                onChange={handleSortOrderChange}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              >
+                {sortOrders.map((order) => (
+                  <option key={order.value} value={order.value}>
+                    {order.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       </div>
