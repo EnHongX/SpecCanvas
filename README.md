@@ -1,66 +1,58 @@
 # SpecCanvas
 
-一个简单而强大的 Markdown 文档管理系统，基于 Next.js + TypeScript + Tailwind CSS + SQLite 构建。
+SpecCanvas 是一个本地 Markdown 设计文档管理工具，基于 Next.js + TypeScript + Tailwind CSS + SQLite(sql.js) 构建。
 
 ## 功能特性
 
-- **多种导入方式**：支持上传本地 Markdown 文件或直接粘贴 Markdown 内容
-- **文档管理**：查看文档列表、文档详情，支持状态管理（草稿/已发布/已归档）
-- **Schema v0 编辑**：为每个文档维护一份最小 Schema，支持首次自动创建、手动编辑和保存
-- **本地存储**：使用 SQLite 本地数据库，所有数据保存在本地，安全可靠
-- **现代化 UI**：基于 Tailwind CSS 构建的现代化界面，支持深色模式
-- **内容统计**：自动统计文档字符数、行数等信息
+- **文档导入**：支持粘贴 Markdown 内容，或上传 `.md` / `.markdown` 文件。
+- **文档管理**：支持文档列表、详情、编辑、删除、按类型筛选和排序。
+- **类型管理**：支持创建、编辑、删除文档类型，并用颜色区分类型。
+- **Schema v0**：为每个文档维护一份结构化 Schema，包含名称、描述、颜色、字体、间距和待确认事项。
+- **Markdown 提取**：支持从 Markdown 中提取 `Colors`、`Typography`、`Spacing`、`Unresolved/TODO` 段落，生成 Schema 草稿。
+- **表单确认**：Schema 页默认使用表单编辑，JSON 编辑器保留为高级模式。
+- **Schema 预览**：预览页只读取已保存的 Schema，不再直接猜测 Markdown 内容。
 
 ## 技术栈
 
-- **框架**: Next.js 14 (App Router)
+- **框架**: Next.js 14 App Router
 - **语言**: TypeScript
 - **样式**: Tailwind CSS
-- **数据库**: SQLite (sql.js)
-- **其他**: React 18
+- **数据库**: SQLite via `sql.js`
+- **运行时**: React 18
 
 ## 项目结构
 
-```
+```text
 SpecCanvas/
 ├── src/
 │   ├── app/
 │   │   ├── api/
-│   │   │   └── documents/          # API 路由
-│   │   │       ├── route.ts        # 文档列表和创建
-│   │   │       └── [id]/
-│   │   │           ├── route.ts    # 单个文档操作
-│   │   │           └── schema/
-│   │   │               └── route.ts # 文档 Schema 操作
+│   │   │   ├── documents/
+│   │   │   │   ├── route.ts
+│   │   │   │   └── [id]/
+│   │   │   │       ├── route.ts
+│   │   │   │       ├── extract-schema/route.ts
+│   │   │   │       └── schema/route.ts
+│   │   │   └── types/
 │   │   ├── documents/
-│   │   │   ├── page.tsx            # 文档列表页
-│   │   │   ├── new/
-│   │   │   │   └── page.tsx        # 新建/导入页
+│   │   │   ├── page.tsx
+│   │   │   ├── new/page.tsx
 │   │   │   └── [id]/
-│   │   │       ├── page.tsx        # 文档详情页
-│   │   │       ├── edit/
-│   │   │       │   └── page.tsx    # 文档编辑页
-│   │   │       └── schema/
-│   │   │           └── page.tsx    # Schema 编辑页
-│   │   ├── globals.css             # 全局样式
-│   │   ├── layout.tsx              # 根布局
-│   │   └── page.tsx                # 首页
+│   │   │       ├── page.tsx
+│   │   │       ├── edit/page.tsx
+│   │   │       ├── preview/page.tsx
+│   │   │       └── schema/page.tsx
+│   │   ├── types/page.tsx
+│   │   ├── layout.tsx
+│   │   └── page.tsx
 │   └── lib/
-│       ├── database.ts             # 数据库连接和初始化
-│       ├── schema-v0.ts            # Schema v0 默认结构和校验
-│       ├── types.ts                # TypeScript 类型定义
+│       ├── database.ts
+│       ├── schema-v0.ts
+│       ├── types.ts
+│       ├── design-preview/
 │       └── models/
-│           ├── document.ts         # 文档数据模型
-│           └── schema.ts           # Schema 数据模型
-├── scripts/
-│   └── schema-v0-smoke-test.mjs    # Schema v0 回归测试
+├── scripts/schema-v0-smoke-test.mjs
 ├── package.json
-├── tsconfig.json
-├── tailwind.config.ts
-├── postcss.config.mjs
-├── next.config.js
-├── next-env.d.ts
-├── .gitignore
 └── README.md
 ```
 
@@ -69,173 +61,81 @@ SpecCanvas/
 ### 前置要求
 
 - Node.js 18.17 或更高版本
-- npm 或 yarn 或 pnpm
+- npm / yarn / pnpm
 
 ### 安装依赖
 
 ```bash
 npm install
-# 或
-yarn install
-# 或
-pnpm install
 ```
 
 ### 开发模式
 
 ```bash
 npm run dev
-# 或
-yarn dev
-# 或
-pnpm dev
 ```
 
-项目启动后，打开浏览器访问 [http://localhost:3000](http://localhost:3000) 即可查看应用。
+启动后访问 [http://localhost:3000](http://localhost:3000)。
 
 ### 生产构建
 
 ```bash
 npm run build
-# 或
-yarn build
-# 或
-pnpm build
 ```
 
 ### 启动生产服务
 
 ```bash
 npm run start
-# 或
-yarn start
-# 或
-pnpm start
 ```
 
 ## 页面说明
 
 ### 首页 (`/`)
 
-- 项目介绍和功能展示
-- 最近文档列表（最多显示 5 个）
-- 快速入口按钮（新建文档、浏览文档）
+- 展示项目入口和最近文档。
+- 提供新建文档、浏览文档入口。
 
 ### 文档列表页 (`/documents`)
 
-- 显示所有文档的表格列表
-- 展示文档标题、来源类型、状态、创建时间、更新时间
-- 点击文档标题可进入详情页
-- 提供新建文档按钮
+- 展示文档标题、来源类型、文档类型、创建时间、更新时间。
+- 支持按类型筛选，并按创建时间、更新时间或标题排序。
+- 支持进入详情、预览、Schema 编辑和删除文档。
 
 ### 新建/导入页 (`/documents/new`)
 
-- 支持两种导入方式：
-  1. **粘贴内容**：直接在文本框中粘贴 Markdown 内容
-  2. **上传文件**：上传本地 .md 或 .markdown 格式的文件
-- 可设置文档标题和状态（草稿/已发布/已归档）
-- 上传文件时会自动从文件名提取标题（如果未手动输入）
+- 支持粘贴 Markdown 内容。
+- 支持上传 `.md` / `.markdown` 文件。
+- 支持设置文档标题和文档类型。
+- 上传文件时会从文件名自动带出标题。
 
 ### 文档详情页 (`/documents/[id]`)
 
-- 显示文档完整信息：
-  - 标题
-  - 来源类型
-  - 状态
-  - 创建时间
-  - 更新时间
-  - 文档 ID
-- 显示原始 Markdown 内容
-- 内容统计信息（字符数、行数）
-- 提供返回列表页、编辑页和 Schema 页入口
+- 展示标题、来源类型、创建时间、更新时间、文档 ID。
+- 展示原始 Markdown 内容和内容统计。
+- 提供编辑、Schema、预览入口。
 
 ### Schema 编辑页 (`/documents/[id]/schema`)
 
-- 任意已创建文档都可以进入 Schema 编辑页
-- 首次进入时，如果文档还没有 Schema，会自动创建默认空结构
-- 当前 Schema v0 只包含：
-  - `meta.name`
-  - `meta.description`
-  - `meta.keywords`
-  - `tokens.colors`
-  - `tokens.typography`
-  - `tokens.spacing`
-  - `unresolved`
-- 支持直接编辑 JSON 并保存
-- 保存失败时会显示具体字段错误
-- 当前版本不包含 Markdown 自动解析、可视化预览、主题切换或导出功能
+- 首次进入时会自动创建默认 Schema v0。
+- 默认使用表单编辑：
+  - 名称
+  - 描述
+  - 颜色列表
+  - 字体列表
+  - 间距列表
+  - 待确认事项
+- 支持点击“从 Markdown 重新提取”生成 Schema 草稿。
+- 提取结果需要用户确认并保存，不会自动覆盖已保存 Schema。
+- JSON 编辑器保留为高级模式。
 
-## API 接口
+### 预览页 (`/documents/[id]/preview`)
 
-### GET `/api/documents`
+- 只读取已保存的 Schema 渲染预览。
+- 不再直接解析原始 Markdown。
+- 如果 Schema 缺少名称、描述、颜色或字体，会提示先去 Schema 页补充。
 
-获取文档列表，支持分页。
-
-**查询参数：**
-- `limit`: 每页数量（默认 50）
-- `offset`: 偏移量（默认 0）
-
-**响应示例：**
-```json
-{
-  "success": true,
-  "data": {
-    "documents": [
-      {
-        "id": 1,
-        "title": "示例文档",
-        "source_type": "paste",
-        "raw_markdown": "# 示例文档\n\n这是一个示例文档。",
-        "status": "draft",
-        "created_at": "2024-01-01T12:00:00.000Z",
-        "updated_at": "2024-01-01T12:00:00.000Z"
-      }
-    ],
-    "total": 10
-  }
-}
-```
-
-### POST `/api/documents`
-
-创建新文档。
-
-**请求体：**
-```json
-{
-  "title": "文档标题",
-  "source_type": "file" | "paste",
-  "raw_markdown": "# Markdown 内容",
-  "status": "draft" | "published" | "archived"  // 可选，默认 draft
-}
-```
-
-### GET `/api/documents/[id]`
-
-获取单个文档详情。
-
-### PUT `/api/documents/[id]`
-
-更新文档信息。
-
-**请求体（所有字段可选）：**
-```json
-{
-  "title": "新标题",
-  "raw_markdown": "# 新内容",
-  "status": "published"
-}
-```
-
-### DELETE `/api/documents/[id]`
-
-删除文档。
-
-### GET `/api/documents/[id]/schema`
-
-获取文档 Schema。如果该文档还没有 Schema，会创建并返回默认 Schema v0。
-
-**默认响应中的 Schema 内容：**
+## Schema v0
 
 ```json
 {
@@ -253,35 +153,133 @@ pnpm start
 }
 ```
 
-### PUT `/api/documents/[id]/schema`
+Markdown 提取支持以下常见段落标题：
 
-保存文档 Schema。请求体必须是完整 Schema v0 内容。
+- `Colors` / `颜色`
+- `Typography` / `字体`
+- `Spacing` / `间距`
+- `Unresolved` / `Pending` / `TODO` / `待确认` / `待办`
 
-**请求体：**
+示例：
+
+```markdown
+# Landing Page
+
+首页设计规范。
+
+## Colors
+primary: #2563eb
+surface: #ffffff
+
+## Typography
+body: 16px / 1.5 / 400
+heading: 32px / 1.2 / 700
+
+## Spacing
+md: 16px
+lg: 24px
+
+## Unresolved
+- 移动端导航还没定
+```
+
+## API 接口
+
+### GET `/api/documents`
+
+获取文档列表，支持分页、类型筛选和排序。
+
+查询参数：
+
+- `limit`: 每页数量，默认 10，最大 100
+- `offset`: 偏移量，默认 0
+- `typeId`: 类型 ID，传 `null` 可筛选无类型文档
+- `sortBy`: `created_at` / `updated_at` / `title`
+- `sortOrder`: `asc` / `desc`
+
+响应示例：
 
 ```json
 {
-  "meta": {
-    "name": "Landing Page",
-    "description": "首页设计规范",
-    "keywords": ["landing", "homepage"]
-  },
-  "tokens": {
-    "colors": {
-      "primary": "#111827"
-    },
-    "typography": {
-      "body": "16px/1.5 sans-serif"
-    },
-    "spacing": {
-      "md": "16px"
-    }
-  },
-  "unresolved": ["确认移动端导航状态"]
+  "success": true,
+  "data": {
+    "documents": [
+      {
+        "id": 1,
+        "title": "示例文档",
+        "source_type": "paste",
+        "raw_markdown": "# 示例文档",
+        "type_id": null,
+        "created_at": "2024-01-01T12:00:00.000Z",
+        "updated_at": "2024-01-01T12:00:00.000Z"
+      }
+    ],
+    "total": 1
+  }
 }
 ```
 
-校验失败时会返回 `details`，用于指出具体字段问题。
+### POST `/api/documents`
+
+创建新文档。
+
+```json
+{
+  "title": "文档标题",
+  "source_type": "paste",
+  "raw_markdown": "# Markdown 内容",
+  "type_id": null
+}
+```
+
+### PUT `/api/documents/[id]`
+
+更新文档信息。
+
+```json
+{
+  "title": "新标题",
+  "raw_markdown": "# 新内容",
+  "type_id": 1
+}
+```
+
+### POST `/api/documents/[id]/extract-schema`
+
+从文档原始 Markdown 提取 Schema v0 草稿。该接口只返回提取结果，不会自动保存。
+
+```json
+{
+  "success": true,
+  "data": {
+    "meta": {
+      "name": "Landing Page",
+      "description": "首页设计规范。",
+      "keywords": []
+    },
+    "tokens": {
+      "colors": {
+        "primary": "#2563eb"
+      },
+      "typography": {
+        "body": "16px / 1.5 / 400"
+      },
+      "spacing": {
+        "md": "16px"
+      }
+    },
+    "unresolved": ["移动端导航还没定"]
+  }
+}
+```
+
+### GET `/api/documents/[id]/schema`
+
+获取文档 Schema。如果文档还没有 Schema，会创建并返回默认 Schema v0。
+
+### PUT `/api/documents/[id]/schema`
+
+保存完整 Schema v0。校验失败时会返回 `details`。
 
 ### POST `/api/documents/[id]/schema`
 
@@ -295,11 +293,22 @@ pnpm start
 |--------|------|------|
 | id | INTEGER | 主键，自增 |
 | title | TEXT | 文档标题 |
-| source_type | TEXT | 来源类型：'file' 或 'paste' |
+| source_type | TEXT | 来源类型：`file` 或 `paste` |
 | raw_markdown | TEXT | 原始 Markdown 内容 |
-| status | TEXT | 状态：'draft', 'published', 'archived'，默认 'draft' |
-| created_at | DATETIME | 创建时间，默认当前时间 |
-| updated_at | DATETIME | 更新时间，默认当前时间 |
+| type_id | INTEGER | 关联的文档类型 ID，可为空 |
+| created_at | DATETIME | 创建时间 |
+| updated_at | DATETIME | 更新时间 |
+
+### document_types 表
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| id | INTEGER | 主键，自增 |
+| name | TEXT | 类型名称 |
+| description | TEXT | 类型描述 |
+| color | TEXT | 类型颜色 |
+| created_at | DATETIME | 创建时间 |
+| updated_at | DATETIME | 更新时间 |
 
 ### schemas 表
 
@@ -309,7 +318,7 @@ pnpm start
 | document_id | INTEGER | 关联的文档 ID，唯一 |
 | meta | TEXT | Schema v0 的 meta JSON |
 | tokens | TEXT | Schema v0 的 tokens JSON |
-| unresolved | TEXT | 未解决项 JSON 数组 |
+| unresolved | TEXT | 待确认事项 JSON 数组 |
 | created_at | DATETIME | 创建时间 |
 | updated_at | DATETIME | 更新时间 |
 
@@ -322,12 +331,6 @@ pnpm start
 ```bash
 DB_PATH=/path/to/custom.db npm run dev
 ```
-
-## 注意事项
-
-1. **数据库文件**：`speccanvas.db` 文件已添加到 `.gitignore`，不会被提交到版本控制。
-2. **依赖安装**：`better-sqlite3` 是原生模块，安装时需要编译。如果遇到问题，请确保系统已安装 build tools。
-3. **Node.js 版本**：推荐使用 Node.js 18.17 或更高版本。
 
 ## 开发说明
 
@@ -355,7 +358,15 @@ npm run test:schema
 - 首次读取 Schema 并自动生成默认结构
 - 手动保存 Schema
 - 再次读取确认保存结果仍然存在
+- 从 Markdown 提取颜色、字体、间距和待确认事项
+- 保存提取出的 Schema
 - 提交非法 Schema 时返回具体字段错误
+
+## 注意事项
+
+1. `speccanvas.db` 已添加到 `.gitignore`，不会提交到版本控制。
+2. 项目使用 `sql.js`，运行时需要能加载对应的 WASM 文件。
+3. 推荐使用 Node.js 18.17 或更高版本。
 
 ## License
 
